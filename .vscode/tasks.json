@@ -1,0 +1,30 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Install dependencies",
+      "type": "shell",
+      "command": "npm i",
+      "problemMatcher": []
+    },
+    {
+      "label": "Prisma migrate",
+      "type": "shell",
+      "command": "npx prisma migrate dev",
+      "problemMatcher": []
+    },
+    {
+      "label": "Playwright install",
+      "type": "shell",
+      "command": "npx playwright install",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run dev server",
+      "type": "shell",
+      "command": "npm run dev",
+      "isBackground": true,
+      "problemMatcher": []
+    }
+  ]
+}

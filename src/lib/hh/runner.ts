@@ -1,4 +1,5 @@
 import type { Vacancy } from "@prisma/client";
+import { randomUUID } from "node:crypto";
 import { HHAutomationError, HHPlaywrightService, type ScrapedVacancy } from "@/lib/hh/playwright";
 import { writeLog } from "@/lib/log";
 import { buildSearchQueries, calculateMatchScore, deriveSearchKeywordsFromResume } from "@/lib/matching";
@@ -106,7 +107,7 @@ class HHRunner {
   }
 
   startSearch() {
-    this.start("search", "Ищу вакансии на HH", 0);
+    this.start("search", "Ищу новые вакансии на HH", 0);
     void this.runSearch();
     return this.getState();
   }
@@ -134,23 +135,36 @@ class HHRunner {
         throw new Error("Добавьте хотя бы одно ключевое слово в Settings");
       }
 
+      this.state.target = settings.searchLimit;
+      await prisma.setting.update({ where: { id: 1 }, data: { activeSearchBatchId: null } });
+      const knownVacancies = await prisma.seenVacancy.findMany({ select: { url: true } });
+      const searchBatchId = randomUUID();
+      const city = settings.searchAllRussia ? null : settings.city;
+
       const scraped = await this.automation.searchVacancies({
         keywords,
-        city: settings.city,
+        city,
         minSalary: settings.minSalary,
+        allRussia: settings.searchAllRussia,
+        remoteOnly: settings.remoteOnly,
+        maxResults: settings.searchLimit,
+        excludedUrls: knownVacancies.map((vacancy) => vacancy.url),
         stopRequested: () => this.state.stopRequested
       });
 
       const saved = await this.saveVacancies(scraped, {
-        city: settings.city,
+        city,
         minSalary: settings.minSalary,
         resumeText: settings.resumeText,
-        keywords: storedKeywords
+        keywords: storedKeywords,
+        searchBatchId
       });
 
+      await prisma.setting.update({ where: { id: 1 }, data: { activeSearchBatchId: searchBatchId } });
+
       this.state.processed = saved;
-      await writeLog("info", "Поиск завершен", { saved });
-      this.finish("Поиск завершен. Сохранено вакансий: " + saved);
+      await writeLog("info", "Поиск завершен", { saved, skippedKnown: knownVacancies.length, searchBatchId });
+      this.finish("Поиск завершен. Найдено новых вакансий: " + saved);
     } catch (error) {
       const message = errorMessage(error);
       await writeLog("error", "Поиск остановлен", { message });
@@ -163,7 +177,13 @@ class HHRunner {
 
   private async saveVacancies(
     vacancies: ScrapedVacancy[],
-    settings: { city?: string | null; minSalary?: number | null; resumeText?: string | null; keywords: string[] }
+    settings: {
+      city?: string | null;
+      minSalary?: number | null;
+      resumeText?: string | null;
+      keywords: string[];
+      searchBatchId: string;
+    }
   ) {
     let saved = 0;
 
@@ -174,41 +194,31 @@ class HHRunner {
       }
 
       const matchScore = calculateMatchScore(vacancy, settings);
-      const existing = await prisma.vacancy.findUnique({ where: { url: vacancy.url } });
-      const nextStatus = "pending";
-
-      if (existing) {
-        const keepStatus = ["applied", "skipped"].includes(existing.status);
-        await prisma.vacancy.update({
-          where: { id: existing.id },
-          data: {
-            externalId: vacancy.externalId,
-            title: vacancy.title,
-            company: vacancy.company,
-            salary: vacancy.salary,
-            city: vacancy.city,
-            description: vacancy.description,
-            matchScore,
-            status: keepStatus ? existing.status : nextStatus
-          }
-        });
-      } else {
-        await prisma.vacancy.create({
-          data: {
-            externalId: vacancy.externalId,
-            title: vacancy.title,
-            company: vacancy.company,
-            salary: vacancy.salary,
-            city: vacancy.city,
-            description: vacancy.description,
-            url: vacancy.url,
-            matchScore,
-            status: nextStatus
-          }
-        });
+      const existing = await prisma.vacancy.findUnique({ where: { url: vacancy.url }, select: { id: true } });
+      if (!existing) {
+        await prisma.$transaction([
+          prisma.seenVacancy.upsert({
+            where: { url: vacancy.url },
+            create: { url: vacancy.url, externalId: vacancy.externalId },
+            update: {}
+          }),
+          prisma.vacancy.create({
+            data: {
+              externalId: vacancy.externalId,
+              title: vacancy.title,
+              company: vacancy.company,
+              salary: vacancy.salary,
+              city: vacancy.city,
+              description: vacancy.description,
+              url: vacancy.url,
+              matchScore,
+              status: "pending",
+              searchBatchId: settings.searchBatchId
+            }
+          })
+        ]);
+        saved += 1;
       }
-
-      saved += 1;
     }
 
     return saved;
@@ -284,6 +294,7 @@ class HHRunner {
     const vacancy = await prisma.vacancy.findUnique({ where: { id } });
     if (!vacancy) throw new Error("Вакансия не найдена");
     if (vacancy.status === "skipped") throw new Error("Вакансия пропущена");
+    if (vacancy.status === "applied") throw new Error("На эту вакансию уже был отправлен отклик");
     if (this.state.stopRequested) throw new HHAutomationError("stopped", "Процесс остановлен пользователем");
 
     const settings = await ensureSettings();
@@ -356,7 +367,8 @@ class HHRunner {
 
       const vacancies = await prisma.vacancy.findMany({
         where: {
-          status: { in: ["found", "pending"] }
+          status: { in: ["found", "pending"] },
+          searchBatchId: settings.activeSearchBatchId ?? "__no_active_search__"
         },
         orderBy: [{ createdAt: "desc" }],
         take: target
@@ -365,7 +377,7 @@ class HHRunner {
       this.state.target = vacancies.length;
 
       if (vacancies.length === 0) {
-        this.finish("Нет вакансий под выбранный match score");
+        this.finish("Нет новых вакансий из последнего поиска для отклика");
         return;
       }
 

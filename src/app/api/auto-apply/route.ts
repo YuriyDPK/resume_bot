@@ -4,8 +4,6 @@ import { hhRunner } from "@/lib/hh/runner";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const allowedLimits = new Set([5, 10, 20]);
-
 export async function GET() {
   return NextResponse.json({ state: hhRunner.getState() });
 }
@@ -23,8 +21,8 @@ export async function POST(request: Request) {
 
   const limit = Number(body.limit);
 
-  if (!allowedLimits.has(limit)) {
-    return NextResponse.json({ error: "Выберите допустимое количество откликов" }, { status: 400 });
+  if (!Number.isInteger(limit) || limit < 1 || limit > 1000) {
+    return NextResponse.json({ error: "Укажите количество откликов от 1 до 1000" }, { status: 400 });
   }
 
   try {

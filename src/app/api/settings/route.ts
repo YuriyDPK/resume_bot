@@ -48,9 +48,7 @@ export async function PUT(request: Request) {
   const keywords = cleanKeywords(body.keywords);
   const delayRange = delayRangeFromBody(body);
 
-  const setting = await prisma.setting.upsert({
-    where: { id: 1 },
-    create: {
+  const settingData = {
       id: 1,
       city: String(body.city ?? "Москва").trim() || "Москва",
       minSalary: optionalNumber(body.minSalary),
@@ -58,27 +56,26 @@ export async function PUT(request: Request) {
       resumeText: String(body.resumeText ?? "").trim(),
       resumeUrl: String(body.resumeUrl ?? "").trim() || null,
       dailyLimit: Math.max(1, optionalNumber(body.dailyLimit) ?? 5),
+      searchLimit: Math.min(1000, Math.max(1, optionalNumber(body.searchLimit) ?? 50)),
+      searchAllRussia: Boolean(body.searchAllRussia),
+      remoteOnly: Boolean(body.remoteOnly),
       applyDelayMinSeconds: delayRange.min,
       applyDelayMaxSeconds: delayRange.max
-    },
-    update: {
-      city: String(body.city ?? "Москва").trim() || "Москва",
-      minSalary: optionalNumber(body.minSalary),
-      coverLetterTemplate: String(body.coverLetterTemplate ?? "").trim(),
-      resumeText: String(body.resumeText ?? "").trim(),
-      resumeUrl: String(body.resumeUrl ?? "").trim() || null,
-      dailyLimit: Math.max(1, optionalNumber(body.dailyLimit) ?? 5),
-      applyDelayMinSeconds: delayRange.min,
-      applyDelayMaxSeconds: delayRange.max
-    }
-  });
+  };
 
-  await prisma.searchKeyword.deleteMany();
-  if (keywords.length > 0) {
-    await prisma.searchKeyword.createMany({
-      data: keywords.map((value) => ({ value, enabled: true }))
+  const setting = await prisma.$transaction(async (tx) => {
+    const saved = await tx.setting.upsert({
+      where: { id: 1 },
+      create: settingData,
+      update: settingData
     });
-  }
+
+    await tx.searchKeyword.deleteMany();
+    if (keywords.length > 0) {
+      await tx.searchKeyword.createMany({ data: keywords.map((value) => ({ value, enabled: true })) });
+    }
+    return saved;
+  });
 
   await writeLog("info", "Настройки обновлены", { keywords: keywords.length });
   const updated = await ensureSettings();

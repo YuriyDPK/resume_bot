@@ -4,8 +4,6 @@ import { useEffect, useState, useTransition } from "react";
 import { Play, ShieldAlert, Square } from "lucide-react";
 import type { RunnerState } from "@/lib/hh/runner";
 
-const limits = [5, 10, 20];
-
 export function AutoApplyPanel({ initialState }: { initialState: RunnerState }) {
   const [limit, setLimit] = useState(5);
   const [state, setState] = useState(initialState);
@@ -50,13 +48,13 @@ export function AutoApplyPanel({ initialState }: { initialState: RunnerState }) 
       <div className="control-grid single-control">
         <label className="field-group">
           <span>Количество откликов</span>
-          <div className="segmented-control">
-            {limits.map((value) => (
-              <button key={value} className={limit === value ? "selected" : ""} onClick={() => setLimit(value)} type="button">
-                {value}
-              </button>
-            ))}
-          </div>
+          <input
+            type="number"
+            min={1}
+            max={1000}
+            value={limit}
+            onChange={(event) => setLimit(Math.min(1000, Math.max(1, Number(event.target.value))))}
+          />
         </label>
       </div>
 

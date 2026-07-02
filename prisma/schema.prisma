@@ -7,54 +7,66 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-
 model Vacancy {
-  id           Int           @id @default(autoincrement())
-  externalId   String?
-  title        String
-  company      String
-  salary       String?
-  city         String?
-  url          String        @unique
-  description  String?
-  matchScore   Int           @default(0)
-  status       String        @default("found")
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  applications Application[]
+  id            Int           @id @default(autoincrement())
+  externalId    String?
+  title         String
+  company       String
+  salary        String?
+  city          String?
+  url           String        @unique
+  description   String?
+  matchScore    Int           @default(0)
+  status        String        @default("found")
+  searchBatchId String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  applications  Application[]
 
   @@index([status])
   @@index([matchScore])
   @@index([createdAt])
+  @@index([searchBatchId])
+}
+
+model SeenVacancy {
+  id          Int      @id @default(autoincrement())
+  url         String   @unique
+  externalId  String?
+  firstSeenAt DateTime @default(now())
 }
 
 model Application {
-  id          Int               @id @default(autoincrement())
+  id          Int       @id @default(autoincrement())
   vacancyId   Int
-  vacancy     Vacancy           @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
+  vacancy     Vacancy   @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
   coverLetter String?
-  status      String            @default("pending")
+  status      String    @default("pending")
   error       String?
   appliedAt   DateTime?
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@index([status])
   @@index([appliedAt])
 }
 
 model Setting {
-  id                  Int      @id @default(1)
-  city                String   @default("Москва")
-  minSalary           Int?
-  coverLetterTemplate String   @default("Здравствуйте! Заинтересовала ваша вакансия. Буду рад обсудить, чем мой опыт может быть полезен команде.")
-  resumeText          String   @default("")
-  resumeUrl           String?
-  dailyLimit          Int      @default(5)
+  id                   Int      @id @default(1)
+  city                 String   @default("Москва")
+  minSalary            Int?
+  coverLetterTemplate  String   @default("Здравствуйте! Заинтересовала ваша вакансия. Буду рад обсудить, чем мой опыт может быть полезен команде.")
+  resumeText           String   @default("")
+  resumeUrl            String?
+  dailyLimit           Int      @default(5)
+  searchLimit          Int      @default(50)
+  searchAllRussia      Boolean  @default(false)
+  remoteOnly           Boolean  @default(false)
+  activeSearchBatchId  String?
   applyDelayMinSeconds Int      @default(3)
   applyDelayMaxSeconds Int      @default(8)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 }
 
 model SearchKeyword {

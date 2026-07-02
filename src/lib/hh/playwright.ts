@@ -54,7 +54,18 @@ function isVacancyUrl(url: string) {
 
 function cityMatches(vacancyCity: string | null | undefined, expectedCity: string | null | undefined) {
   if (!expectedCity?.trim() || !vacancyCity?.trim()) return true;
-  return normalizeForCompare(vacancyCity).includes(normalizeForCompare(expectedCity));
+  const cities = expectedCity
+    .split(/[,;\n]/)
+    .map((city) => normalizeForCompare(city))
+    .filter(Boolean);
+  return cities.length === 0 || cities.some((city) => normalizeForCompare(vacancyCity).includes(city));
+}
+
+function splitCities(value: string | null | undefined) {
+  return (value ?? "")
+    .split(/[,;\n]/)
+    .map((city) => city.trim())
+    .filter(Boolean);
 }
 
 export class HHPlaywrightService {
@@ -174,33 +185,75 @@ export class HHPlaywrightService {
     }
   }
 
+  private async resolveAreaIds(page: Page, cities: string[]) {
+    if (cities.length === 0) return [];
+
+    try {
+      const response = await page.request.get("https://api.hh.ru/areas/113", { timeout: 20000 });
+      if (!response.ok()) return [];
+      const root = (await response.json()) as { id: string; name: string; areas?: unknown[] };
+      const wanted = new Set(cities.map(normalizeForCompare));
+      const found = new Set<string>();
+
+      const visit = (area: { id?: string; name?: string; areas?: unknown[] }) => {
+        if (area.id && area.name && wanted.has(normalizeForCompare(area.name))) found.add(area.id);
+        for (const child of area.areas ?? []) visit(child as { id?: string; name?: string; areas?: unknown[] });
+      };
+
+      visit(root);
+      return Array.from(found);
+    } catch {
+      return [];
+    }
+  }
+
   async searchVacancies(params: {
     keywords: string[];
     city?: string | null;
     minSalary?: number | null;
+    allRussia?: boolean;
+    remoteOnly?: boolean;
+    maxResults: number;
+    excludedUrls?: string[];
     stopRequested?: StopSignal;
   }) {
     const page = await this.ensureAuthorized(params.stopRequested);
     const results = new Map<string, ScrapedVacancy>();
+    const excludedUrls = new Set((params.excludedUrls ?? []).map(normalizeUrl).filter(Boolean));
+    const exhaustedKeywords = new Set<string>();
+    const itemsPerPage = 20;
+    const maxPages = 100;
+    const cities = splitCities(params.city);
+    const areaIds = params.allRussia ? ["113"] : await this.resolveAreaIds(page, cities);
 
-    for (const keyword of params.keywords) {
-      this.assertNotStopped(params.stopRequested);
-      const url = new URL("https://hh.ru/search/vacancy");
-      url.searchParams.set("text", keyword);
-      url.searchParams.set("items_on_page", "20");
-      if (params.minSalary) url.searchParams.set("salary", String(params.minSalary));
+    if (!params.allRussia && cities.length > 0 && areaIds.length === 0) {
+      await writeLog("warn", "Не удалось определить коды городов HH; применяю фильтр по названию в результатах", { cities });
+    }
 
-      await writeLog("info", "Ищу вакансии на HH", { keyword });
-      await page.goto(url.toString(), { waitUntil: "domcontentloaded", timeout: 60000 });
-      await page.waitForTimeout(2500);
+    for (let pageNumber = 0; pageNumber < maxPages && results.size < params.maxResults; pageNumber += 1) {
+      for (const keyword of params.keywords) {
+        if (results.size >= params.maxResults) break;
+        if (exhaustedKeywords.has(keyword)) continue;
+        this.assertNotStopped(params.stopRequested);
+        const url = new URL("https://hh.ru/search/vacancy");
+        url.searchParams.set("text", keyword);
+        url.searchParams.set("items_on_page", String(itemsPerPage));
+        url.searchParams.set("page", String(pageNumber));
+        if (params.minSalary) url.searchParams.set("salary", String(params.minSalary));
+        for (const areaId of areaIds) url.searchParams.append("area", areaId);
+        if (params.remoteOnly) url.searchParams.set("schedule", "remote");
 
-      if (await this.detectCaptcha(page)) {
-        throw new HHAutomationError("captcha", "HH показал CAPTCHA во время поиска. Процесс остановлен.");
-      }
+        await writeLog("info", "Ищу новые вакансии на HH", { keyword, page: pageNumber + 1 });
+        await page.goto(url.toString(), { waitUntil: "domcontentloaded", timeout: 60000 });
+        await page.waitForTimeout(2500);
 
-      await page.locator('a[href*="/vacancy/"]').first().waitFor({ timeout: 15000 }).catch(() => undefined);
+        if (await this.detectCaptcha(page)) {
+          throw new HHAutomationError("captcha", "HH показал CAPTCHA во время поиска. Процесс остановлен.");
+        }
 
-      const scraped = await page.evaluate(() => {
+        await page.locator('a[href*="/vacancy/"]').first().waitFor({ timeout: 15000 }).catch(() => undefined);
+
+        const scraped = await page.evaluate(() => {
         type BrowserVacancy = {
           title: string;
           company: string;
@@ -252,23 +305,31 @@ export class HHPlaywrightService {
             url: link.href
           }))
           .filter((item) => item.title && item.url);
-      });
-
-      for (const item of scraped) {
-        const normalizedUrl = normalizeUrl(item.url);
-        if (!normalizedUrl || !isVacancyUrl(normalizedUrl)) continue;
-        if (!cityMatches(item.city, params.city)) continue;
-
-        results.set(normalizedUrl, {
-          externalId: extractExternalId(normalizedUrl),
-          title: item.title || "Без названия",
-          company: item.company || "HH.ru",
-          salary: item.salary,
-          city: item.city ?? params.city ?? null,
-          description: item.description,
-          url: normalizedUrl
         });
+
+        if (scraped.length === 0) exhaustedKeywords.add(keyword);
+
+        for (const item of scraped) {
+          const normalizedUrl = normalizeUrl(item.url);
+          if (!normalizedUrl || !isVacancyUrl(normalizedUrl)) continue;
+          if (excludedUrls.has(normalizedUrl)) continue;
+          if (!params.allRussia && !cityMatches(item.city, params.city)) continue;
+
+          results.set(normalizedUrl, {
+            externalId: extractExternalId(normalizedUrl),
+            title: item.title || "Без названия",
+            company: item.company || "HH.ru",
+            salary: item.salary,
+            city: item.city ?? params.city ?? null,
+            description: item.description,
+            url: normalizedUrl
+          });
+
+          if (results.size >= params.maxResults) break;
+        }
       }
+
+      if (exhaustedKeywords.size === params.keywords.length) break;
     }
 
     await this.context?.storageState({ path: hhConfig.storageStatePath });

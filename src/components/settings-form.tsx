@@ -12,6 +12,9 @@ export type SettingsFormValue = {
   resumeText: string;
   resumeUrl: string;
   dailyLimit: number;
+  searchLimit: number;
+  searchAllRussia: boolean;
+  remoteOnly: boolean;
   applyDelayMinSeconds: number;
   applyDelayMaxSeconds: number;
 };
@@ -38,6 +41,17 @@ export function SettingsForm({ initialValue }: { initialValue: SettingsFormValue
       });
       const payload = await response.json().catch(() => ({}));
       setMessage(response.ok ? "Настройки сохранены" : payload.error ?? "Не удалось сохранить настройки");
+      if (response.ok && payload.settings) {
+        setValue((current) => ({
+          ...current,
+          ...payload.settings,
+          minSalary: payload.settings.minSalary ?? "",
+          resumeUrl: payload.settings.resumeUrl ?? "",
+          keywords: Array.isArray(payload.settings.keywords)
+            ? payload.settings.keywords.map((keyword: { value: string }) => keyword.value).join("\n")
+            : current.keywords
+        }));
+      }
       router.refresh();
     });
   }
@@ -87,9 +101,30 @@ export function SettingsForm({ initialValue }: { initialValue: SettingsFormValue
       </label>
 
       <label className="field-group">
-        <span>Город</span>
-        <input value={value.city} onChange={(event) => update("city", event.target.value)} />
+        <span>Города (через запятую)</span>
+        <input
+          value={value.city}
+          disabled={value.searchAllRussia}
+          onChange={(event) => update("city", event.target.value)}
+          placeholder="Москва, Санкт-Петербург"
+        />
       </label>
+
+      <div className="field-group checkbox-group">
+        <span>География</span>
+        <label className="checkbox-field">
+          <input type="checkbox" checked={value.searchAllRussia} onChange={(event) => update("searchAllRussia", event.target.checked)} />
+          <span>Искать по всей России</span>
+        </label>
+      </div>
+
+      <div className="field-group checkbox-group">
+        <span>Формат работы</span>
+        <label className="checkbox-field">
+          <input type="checkbox" checked={value.remoteOnly} onChange={(event) => update("remoteOnly", event.target.checked)} />
+          <span>Только удалённая работа</span>
+        </label>
+      </div>
 
       <label className="field-group">
         <span>Минимальная зарплата</span>
@@ -108,6 +143,17 @@ export function SettingsForm({ initialValue }: { initialValue: SettingsFormValue
           min={1}
           value={value.dailyLimit}
           onChange={(event) => update("dailyLimit", Math.max(1, Number(event.target.value)))}
+        />
+      </label>
+
+      <label className="field-group">
+        <span>Сколько новых вакансий найти</span>
+        <input
+          type="number"
+          min={1}
+          max={1000}
+          value={value.searchLimit}
+          onChange={(event) => update("searchLimit", Math.min(1000, Math.max(1, Number(event.target.value))))}
         />
       </label>
 

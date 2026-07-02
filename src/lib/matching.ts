@@ -138,7 +138,8 @@ export function calculateMatchScore(vacancy: MatchInput, settings: MatchSettings
     score += Math.min(35, Math.round((resumeMatches / Math.min(resumeTokens.length, 16)) * 35));
   }
 
-  if (settings.city && normalizeText(vacancy.city).includes(normalizeText(settings.city))) {
+  const cities = (settings.city ?? "").split(/[,;\n]/).map((city) => normalizeText(city.trim())).filter(Boolean);
+  if (cities.some((city) => normalizeText(vacancy.city).includes(city))) {
     score += 10;
   }
 

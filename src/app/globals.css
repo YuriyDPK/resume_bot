@@ -554,6 +554,32 @@ tr:last-child td {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 
+.field-group input:disabled {
+  background: #eef2f7;
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.checkbox-field {
+  min-height: 43px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.checkbox-field input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+
+.checkbox-field span {
+  font-weight: 600;
+}
+
 .full-span {
   grid-column: 1 / -1;
 }

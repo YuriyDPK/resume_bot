@@ -16,6 +16,9 @@ export default async function SettingsPage() {
     resumeText: settings.resumeText,
     resumeUrl: settings.resumeUrl ?? "",
     dailyLimit: settings.dailyLimit,
+    searchLimit: settings.searchLimit,
+    searchAllRussia: settings.searchAllRussia,
+    remoteOnly: settings.remoteOnly,
     applyDelayMinSeconds: settings.applyDelayMinSeconds,
     applyDelayMaxSeconds: settings.applyDelayMaxSeconds
   };

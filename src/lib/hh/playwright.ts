@@ -5,6 +5,7 @@ import { hhConfig } from "@/lib/env";
 import { writeLog } from "@/lib/log";
 
 export type StopSignal = () => boolean;
+export type DelayRange = { minSeconds: number; maxSeconds: number };
 
 export type ScrapedVacancy = {
   externalId?: string;
@@ -170,7 +171,7 @@ export class HHPlaywrightService {
     throw new HHAutomationError("auth", "Не удалось подтвердить авторизацию за 10 минут");
   }
 
-  async waitHumanDelay(page: Page, delayRange: { minSeconds: number; maxSeconds: number }, stopRequested?: StopSignal) {
+  async waitHumanDelay(page: Page, delayRange: DelayRange, stopRequested?: StopSignal) {
     const minMs = Math.max(0, Math.min(delayRange.minSeconds, delayRange.maxSeconds)) * 1000;
     const maxMs = Math.max(0, Math.max(delayRange.minSeconds, delayRange.maxSeconds)) * 1000;
     const delayMs = minMs + Math.floor(Math.random() * (maxMs - minMs + 1));
@@ -216,6 +217,8 @@ export class HHPlaywrightService {
     maxResults: number;
     excludedUrls?: string[];
     stopRequested?: StopSignal;
+    delayRange?: DelayRange;
+    onVacancy?: (vacancy: ScrapedVacancy) => Promise<void>;
   }) {
     const page = await this.ensureAuthorized(params.stopRequested);
     const results = new Map<string, ScrapedVacancy>();
@@ -225,6 +228,7 @@ export class HHPlaywrightService {
     const maxPages = 100;
     const cities = splitCities(params.city);
     const areaIds = params.allRussia ? ["113"] : await this.resolveAreaIds(page, cities);
+    const searchDelayRange = params.delayRange ?? { minSeconds: 1, maxSeconds: 3 };
 
     if (!params.allRussia && cities.length > 0 && areaIds.length === 0) {
       await writeLog("warn", "Не удалось определить коды городов HH; применяю фильтр по названию в результатах", { cities });
@@ -315,7 +319,7 @@ export class HHPlaywrightService {
           if (excludedUrls.has(normalizedUrl)) continue;
           if (!params.allRussia && !cityMatches(item.city, params.city)) continue;
 
-          results.set(normalizedUrl, {
+          const vacancy = {
             externalId: extractExternalId(normalizedUrl),
             title: item.title || "Без названия",
             company: item.company || "HH.ru",
@@ -323,13 +327,20 @@ export class HHPlaywrightService {
             city: item.city ?? params.city ?? null,
             description: item.description,
             url: normalizedUrl
-          });
+          };
+
+          results.set(normalizedUrl, vacancy);
+          excludedUrls.add(normalizedUrl);
+          await params.onVacancy?.(vacancy);
 
           if (results.size >= params.maxResults) break;
         }
       }
 
       if (exhaustedKeywords.size === params.keywords.length) break;
+      if (results.size < params.maxResults) {
+        await this.waitHumanDelay(page, searchDelayRange, params.stopRequested);
+      }
     }
 
     await this.context?.storageState({ path: hhConfig.storageStatePath });

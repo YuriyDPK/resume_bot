@@ -29,9 +29,9 @@ function optionalNumber(value: unknown) {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
-function delayRangeFromBody(body: Record<string, unknown>) {
-  const first = Math.max(0, positiveNumber(body.applyDelayMinSeconds, 3));
-  const second = Math.max(0, positiveNumber(body.applyDelayMaxSeconds, 8));
+function rangeFromBody(body: Record<string, unknown>, minKey: string, maxKey: string, fallbackMin: number, fallbackMax: number) {
+  const first = Math.max(0, positiveNumber(body[minKey], fallbackMin));
+  const second = Math.max(0, positiveNumber(body[maxKey], fallbackMax));
   return {
     min: Math.min(first, second),
     max: Math.max(first, second)
@@ -46,21 +46,24 @@ export async function GET() {
 export async function PUT(request: Request) {
   const body = await request.json();
   const keywords = cleanKeywords(body.keywords);
-  const delayRange = delayRangeFromBody(body);
+  const applyDelayRange = rangeFromBody(body, "applyDelayMinSeconds", "applyDelayMaxSeconds", 3, 8);
+  const searchDelayRange = rangeFromBody(body, "searchDelayMinSeconds", "searchDelayMaxSeconds", 1, 3);
 
   const settingData = {
-      id: 1,
-      city: String(body.city ?? "Москва").trim() || "Москва",
-      minSalary: optionalNumber(body.minSalary),
-      coverLetterTemplate: String(body.coverLetterTemplate ?? "").trim(),
-      resumeText: String(body.resumeText ?? "").trim(),
-      resumeUrl: String(body.resumeUrl ?? "").trim() || null,
-      dailyLimit: Math.max(1, optionalNumber(body.dailyLimit) ?? 5),
-      searchLimit: Math.min(1000, Math.max(1, optionalNumber(body.searchLimit) ?? 50)),
-      searchAllRussia: Boolean(body.searchAllRussia),
-      remoteOnly: Boolean(body.remoteOnly),
-      applyDelayMinSeconds: delayRange.min,
-      applyDelayMaxSeconds: delayRange.max
+    id: 1,
+    city: String(body.city ?? "Москва").trim() || "Москва",
+    minSalary: optionalNumber(body.minSalary),
+    coverLetterTemplate: String(body.coverLetterTemplate ?? "").trim(),
+    resumeText: String(body.resumeText ?? "").trim(),
+    resumeUrl: String(body.resumeUrl ?? "").trim() || null,
+    dailyLimit: Math.max(1, optionalNumber(body.dailyLimit) ?? 5),
+    searchLimit: Math.min(1000, Math.max(1, optionalNumber(body.searchLimit) ?? 50)),
+    searchAllRussia: Boolean(body.searchAllRussia),
+    remoteOnly: Boolean(body.remoteOnly),
+    searchDelayMinSeconds: searchDelayRange.min,
+    searchDelayMaxSeconds: searchDelayRange.max,
+    applyDelayMinSeconds: applyDelayRange.min,
+    applyDelayMaxSeconds: applyDelayRange.max
   };
 
   const setting = await prisma.$transaction(async (tx) => {

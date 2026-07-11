@@ -63,6 +63,8 @@ model Setting {
   searchAllRussia      Boolean  @default(false)
   remoteOnly           Boolean  @default(false)
   activeSearchBatchId  String?
+  searchDelayMinSeconds Int     @default(1)
+  searchDelayMaxSeconds Int     @default(3)
   applyDelayMinSeconds Int      @default(3)
   applyDelayMaxSeconds Int      @default(8)
   createdAt            DateTime @default(now())

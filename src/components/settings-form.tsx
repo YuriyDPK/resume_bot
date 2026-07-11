@@ -15,6 +15,8 @@ export type SettingsFormValue = {
   searchLimit: number;
   searchAllRussia: boolean;
   remoteOnly: boolean;
+  searchDelayMinSeconds: number;
+  searchDelayMaxSeconds: number;
   applyDelayMinSeconds: number;
   applyDelayMaxSeconds: number;
 };
@@ -154,6 +156,26 @@ export function SettingsForm({ initialValue }: { initialValue: SettingsFormValue
           max={1000}
           value={value.searchLimit}
           onChange={(event) => update("searchLimit", Math.min(1000, Math.max(1, Number(event.target.value))))}
+        />
+      </label>
+
+      <label className="field-group">
+        <span>Задержка поиска от, сек</span>
+        <input
+          type="number"
+          min={0}
+          value={value.searchDelayMinSeconds}
+          onChange={(event) => update("searchDelayMinSeconds", Math.max(0, Number(event.target.value)))}
+        />
+      </label>
+
+      <label className="field-group">
+        <span>Задержка поиска до, сек</span>
+        <input
+          type="number"
+          min={0}
+          value={value.searchDelayMaxSeconds}
+          onChange={(event) => update("searchDelayMaxSeconds", Math.max(0, Number(event.target.value)))}
         />
       </label>
 

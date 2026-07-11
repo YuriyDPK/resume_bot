@@ -1,0 +1,2 @@
+ALTER TABLE "Setting" ADD COLUMN "searchDelayMinSeconds" INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE "Setting" ADD COLUMN "searchDelayMaxSeconds" INTEGER NOT NULL DEFAULT 3;

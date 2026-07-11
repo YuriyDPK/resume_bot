@@ -39,6 +39,8 @@ export async function ensureSettings() {
         searchLimit: 50,
         searchAllRussia: false,
         remoteOnly: false,
+        searchDelayMinSeconds: 1,
+        searchDelayMaxSeconds: 3,
         applyDelayMinSeconds: 3,
         applyDelayMaxSeconds: 8,
         coverLetterTemplate:

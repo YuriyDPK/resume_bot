@@ -18,6 +18,18 @@ function cleanKeywords(value: unknown) {
   );
 }
 
+function cleanTextList(value: unknown) {
+  const raw = Array.isArray(value) ? value.join("\n") : String(value ?? "");
+  return Array.from(
+    new Set(
+      raw
+        .split(/[\n,;]/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+    )
+  ).join("\n");
+}
+
 function positiveNumber(value: unknown, fallback: number) {
   const parsed = Number.parseInt(String(value ?? ""), 10);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
@@ -56,6 +68,7 @@ export async function PUT(request: Request) {
     coverLetterTemplate: String(body.coverLetterTemplate ?? "").trim(),
     resumeText: String(body.resumeText ?? "").trim(),
     resumeUrl: String(body.resumeUrl ?? "").trim() || null,
+    excludedWords: cleanTextList(body.excludedWords),
     dailyLimit: Math.max(1, optionalNumber(body.dailyLimit) ?? 5),
     searchLimit: Math.min(1000, Math.max(1, optionalNumber(body.searchLimit) ?? 50)),
     searchAllRussia: Boolean(body.searchAllRussia),

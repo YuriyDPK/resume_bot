@@ -27,7 +27,10 @@ export function VacancyTable({ vacancies }: { vacancies: VacancyRow[] }) {
   const router = useRouter();
   const [busyId, setBusyId] = useState<number | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [hideCompleted, setHideCompleted] = useState(true);
   const [isPending, startTransition] = useTransition();
+  const visibleVacancies = hideCompleted ? vacancies.filter((vacancy) => vacancy.status !== "applied" && vacancy.status !== "failed") : vacancies;
+  const hiddenCount = vacancies.length - visibleVacancies.length;
 
   function postAction(id: number, action: "apply" | "skip") {
     setBusyId(id);
@@ -77,13 +80,21 @@ export function VacancyTable({ vacancies }: { vacancies: VacancyRow[] }) {
     <section className="panel table-panel">
       <div className="table-toolbar">
         <div className="toolbar-title">
-          <strong>{vacancies.length} вакансий</strong>
+          <strong>
+            {visibleVacancies.length} из {vacancies.length} вакансий
+          </strong>
           {message ? <span className="muted-text">{message}</span> : null}
         </div>
-        <button className="button danger" type="button" onClick={clearVacancies} disabled={isPending || vacancies.length === 0}>
-          <Trash2 size={17} />
-          <span>Очистить все</span>
-        </button>
+        <div className="table-actions">
+          <label className="compact-checkbox">
+            <input type="checkbox" checked={hideCompleted} onChange={(event) => setHideCompleted(event.target.checked)} />
+            <span>Скрыть applied/failed</span>
+          </label>
+          <button className="button danger" type="button" onClick={clearVacancies} disabled={isPending || vacancies.length === 0}>
+            <Trash2 size={17} />
+            <span>Очистить все</span>
+          </button>
+        </div>
       </div>
 
       <div className="table-wrap">
@@ -101,14 +112,14 @@ export function VacancyTable({ vacancies }: { vacancies: VacancyRow[] }) {
             </tr>
           </thead>
           <tbody>
-            {vacancies.length === 0 ? (
+            {visibleVacancies.length === 0 ? (
               <tr>
                 <td colSpan={8} className="empty-cell">
-                  Вакансии появятся после запуска поиска.
+                  {vacancies.length === 0 ? "Вакансии появятся после запуска поиска." : "Все вакансии скрыты текущим фильтром."}
                 </td>
               </tr>
             ) : (
-              vacancies.map((vacancy) => (
+              visibleVacancies.map((vacancy) => (
                 <tr key={vacancy.id}>
                   <td className="title-cell">{vacancy.title}</td>
                   <td>{vacancy.company}</td>
@@ -165,6 +176,7 @@ export function VacancyTable({ vacancies }: { vacancies: VacancyRow[] }) {
           </tbody>
         </table>
       </div>
+      {hiddenCount > 0 ? <p className="table-footnote muted-text">Скрыто applied/failed: {hiddenCount}</p> : null}
     </section>
   );
 }

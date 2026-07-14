@@ -2,7 +2,7 @@ import type { Vacancy } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { HHAutomationError, HHPlaywrightService, type ScrapedVacancy } from "@/lib/hh/playwright";
 import { writeLog } from "@/lib/log";
-import { buildSearchQueries, calculateMatchScore, deriveSearchKeywordsFromResume } from "@/lib/matching";
+import { buildSearchQueries, calculateMatchScore, deriveSearchKeywordsFromResume, parseExcludedWords, vacancyHasExcludedWords } from "@/lib/matching";
 import { prisma } from "@/lib/prisma";
 import { ensureSettings } from "@/lib/settings";
 
@@ -133,6 +133,7 @@ class HHRunner {
 
       const storedKeywords = settings.keywords.map((keyword) => keyword.value.trim()).filter(Boolean);
       const keywords = buildSearchQueries(storedKeywords, settings.resumeText);
+      const excludedWords = parseExcludedWords(settings.excludedWords);
 
       if (keywords.length === 0) {
         throw new Error("Добавьте хотя бы одно ключевое слово в Settings");
@@ -164,6 +165,7 @@ class HHRunner {
             minSalary: settings.minSalary,
             resumeText: settings.resumeText,
             keywords: storedKeywords,
+            excludedWords,
             searchBatchId
           });
           savedDuringSearch += saved;
@@ -208,6 +210,7 @@ class HHRunner {
       minSalary?: number | null;
       resumeText?: string | null;
       keywords: string[];
+      excludedWords: string[];
       searchBatchId: string;
     }
   ) {
@@ -216,6 +219,11 @@ class HHRunner {
     for (const vacancy of vacancies) {
       if (!vacancy.url) {
         await writeLog("warn", "Вакансия пропущена: нет ссылки", { title: vacancy.title, externalId: vacancy.externalId });
+        continue;
+      }
+
+      if (vacancyHasExcludedWords(vacancy, settings.excludedWords)) {
+        await writeLog("info", "Вакансия пропущена по стоп-словам", { title: vacancy.title, url: vacancy.url });
         continue;
       }
 
@@ -396,7 +404,7 @@ class HHRunner {
           status: { in: ["found", "pending"] },
           searchBatchId: settings.activeSearchBatchId ?? "__no_active_search__"
         },
-        orderBy: [{ createdAt: "desc" }],
+        orderBy: [{ matchScore: "desc" }, { createdAt: "desc" }],
         take: target
       });
 
@@ -410,7 +418,14 @@ class HHRunner {
       for (const vacancy of vacancies) {
         if (this.state.stopRequested) break;
         this.state.message = "Откликаюсь: " + vacancy.title;
-        await this.applyVacancyInternal(vacancy.id);
+        try {
+          await this.applyVacancyInternal(vacancy.id);
+        } catch (error) {
+          if (error instanceof HHAutomationError && (error.code === "captcha" || error.code === "auth" || error.code === "stopped")) {
+            throw error;
+          }
+          await writeLog("warn", "Пропускаю вакансию из-за ошибки отклика", { vacancyId: vacancy.id, title: vacancy.title, message: errorMessage(error) });
+        }
         this.state.processed += 1;
       }
 

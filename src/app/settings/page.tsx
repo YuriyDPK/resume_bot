@@ -15,6 +15,7 @@ export default async function SettingsPage() {
     coverLetterTemplate: settings.coverLetterTemplate,
     resumeText: settings.resumeText,
     resumeUrl: settings.resumeUrl ?? "",
+    excludedWords: settings.excludedWords,
     dailyLimit: settings.dailyLimit,
     searchLimit: settings.searchLimit,
     searchAllRussia: settings.searchAllRussia,

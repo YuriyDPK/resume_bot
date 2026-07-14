@@ -58,6 +58,7 @@ model Setting {
   coverLetterTemplate  String   @default("Здравствуйте! Заинтересовала ваша вакансия. Буду рад обсудить, чем мой опыт может быть полезен команде.")
   resumeText           String   @default("")
   resumeUrl            String?
+  excludedWords        String   @default("")
   dailyLimit           Int      @default(5)
   searchLimit          Int      @default(50)
   searchAllRussia      Boolean  @default(false)

@@ -1,0 +1,1 @@
+ALTER TABLE "Setting" ADD COLUMN "excludedWords" TEXT NOT NULL DEFAULT '';

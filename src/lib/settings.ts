@@ -46,7 +46,8 @@ export async function ensureSettings() {
         coverLetterTemplate:
           "Здравствуйте! Заинтересовала ваша вакансия. Буду рад обсудить, чем мой управленческий опыт может быть полезен вашей компании.",
         resumeText: executiveDefaultResumeText,
-        resumeUrl: defaultResumeUrl
+        resumeUrl: defaultResumeUrl,
+        excludedWords: ""
       }
     });
   }

@@ -493,8 +493,12 @@ export class HHPlaywrightService {
     }
 
     const afterClickText = await this.bodyText(page);
-    if (coverLetter.trim() && /вы откликнулись|отклик отправлен|отклик уже отправлен/i.test(afterClickText)) {
-      throw new HHAutomationError("apply", "HH отправил отклик сразу после нажатия кнопки, без формы сопроводительного письма.");
+    if (/вы откликнулись|отклик отправлен|отклик уже отправлен/i.test(afterClickText)) {
+      if (coverLetter.trim()) {
+        await writeLog("warn", "HH отправил отклик сразу после нажатия кнопки, без формы сопроводительного письма. Отклик засчитан без письма.", { vacancyUrl: vacancy.url });
+      }
+      await this.context?.storageState({ path: hhConfig.storageStatePath });
+      return { alreadyApplied: false, coverLetterSkipped: coverLetter.trim() ? true : false };
     }
 
     await this.fillCoverLetter(page, coverLetter);

@@ -11,6 +11,7 @@ export type SettingsFormValue = {
   coverLetterTemplate: string;
   resumeText: string;
   resumeUrl: string;
+  excludedWords: string;
   dailyLimit: number;
   searchLimit: number;
   searchAllRussia: boolean;
@@ -100,6 +101,16 @@ export function SettingsForm({ initialValue }: { initialValue: SettingsFormValue
       <label className="field-group full-span">
         <span>Ключевые слова для поиска</span>
         <textarea value={value.keywords} onChange={(event) => update("keywords", event.target.value)} rows={4} />
+      </label>
+
+      <label className="field-group full-span">
+        <span>Слова, которых не должно быть в вакансии</span>
+        <textarea
+          value={value.excludedWords}
+          onChange={(event) => update("excludedWords", event.target.value)}
+          rows={3}
+          placeholder="Например: стажер, junior, холодные звонки"
+        />
       </label>
 
       <label className="field-group">

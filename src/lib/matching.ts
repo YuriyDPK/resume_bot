@@ -121,6 +121,38 @@ export function buildSearchQueries(keywords: string[], resumeText: string | null
   return Array.from(new Set([...manual, ...derived])).slice(0, 12);
 }
 
+export function parseExcludedWords(value: string | string[] | null | undefined) {
+  const raw = Array.isArray(value) ? value.join("\n") : value ?? "";
+  return Array.from(
+    new Set(
+      raw
+        .split(/[\n,;]/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+    )
+  );
+}
+
+export function vacancyHasExcludedWords(vacancy: MatchInput, excludedWords: string[]) {
+  if (excludedWords.length === 0) return false;
+
+  const haystack = [vacancy.title, vacancy.company, vacancy.description, vacancy.city].filter(Boolean).join(" ");
+  const normalizedHaystack = normalizeText(haystack);
+  const haystackTokens = new Set(tokens(haystack));
+
+  return excludedWords.some((word) => {
+    const normalizedWord = normalizeText(word.trim());
+    if (!normalizedWord) return false;
+
+    const wordTokens = tokens(normalizedWord);
+    if (wordTokens.length === 1 && wordTokens[0] === normalizedWord) {
+      return haystackTokens.has(normalizedWord);
+    }
+
+    return normalizedHaystack.includes(normalizedWord);
+  });
+}
+
 export function calculateMatchScore(vacancy: MatchInput, settings: MatchSettings) {
   const haystack = normalizeText([vacancy.title, vacancy.company, vacancy.description].filter(Boolean).join(" "));
   const activeKeywords = buildSearchQueries(settings.keywords, settings.resumeText);

@@ -48,6 +48,9 @@ const relevantManagementTitlePatterns = [
   /директор\w*\s+(?:филиал|по\s+развитию|по\s+продаж|по\s+производств|по\s+операцион|продуктов|производств)/i,
   /заместител\w*\s+(?:генеральн\w*\s+)?директор/i,
   /руководител\w*\s+(?:отдел|подразделен|направлен|проект|производств|филиал)/i,
+  /(?:руководител|менеджер|управляющ)\w*\s+(?:проект|программ)/i,
+  /(?:проект|программ)\w*\s+менеджер/i,
+  /\b(?:project|program)\s+manager\b/i,
   /\b(?:executive|operations|commercial|managing|general|branch|development|production)\s+director\b/i,
   /\b(?:ceo|coo|cco|head of)\b/i
 ];
@@ -134,6 +137,15 @@ function looksLikeLegacyFrontendKeywords(keywords: string[]) {
   return keywords.every((keyword) => legacyFrontendKeywordSet.has(normalizeText(keyword)));
 }
 
+function isRelevantManagementTitle(title: string) {
+  const normalizedTitle = normalizeText(title);
+  return relevantManagementTitlePatterns.some((pattern) => pattern.test(normalizedTitle));
+}
+
+function isGenericManagerStopWord(word: string) {
+  return word === "менеджер" || word === "manager";
+}
+
 export function deriveSearchKeywordsFromResume(resumeText: string | null | undefined) {
   const text = resumeText ?? "";
   const foundRoles = rolePatterns
@@ -154,10 +166,10 @@ export function buildSearchQueries(keywords: string[], resumeText: string | null
   }
 
   if (manual.length > 0) {
-    return Array.from(new Set(manual)).slice(0, 12);
+    return Array.from(new Set(manual)).slice(0, 15);
   }
 
-  return Array.from(new Set([...manual, ...derived])).slice(0, 12);
+  return Array.from(new Set([...manual, ...derived])).slice(0, 15);
 }
 
 export function parseExcludedWords(value: string | string[] | null | undefined) {
@@ -175,6 +187,8 @@ export function parseExcludedWords(value: string | string[] | null | undefined) 
 export function vacancyHasExcludedWords(vacancy: MatchInput, excludedWords: string[]) {
   if (excludedWords.length === 0) return false;
 
+  const title = vacancy.title ?? "";
+  const protectedManagementTitle = isRelevantManagementTitle(title);
   const haystack = [vacancy.title, vacancy.company, vacancy.description, vacancy.city].filter(Boolean).join(" ");
   const normalizedHaystack = normalizeText(haystack);
   const haystackTokens = new Set(tokens(haystack));
@@ -182,6 +196,7 @@ export function vacancyHasExcludedWords(vacancy: MatchInput, excludedWords: stri
   return excludedWords.some((word) => {
     const normalizedWord = normalizeText(word.trim());
     if (!normalizedWord) return false;
+    if (protectedManagementTitle && isGenericManagerStopWord(normalizedWord)) return false;
 
     const wordTokens = tokens(normalizedWord);
     if (wordTokens.length === 1 && wordTokens[0] === normalizedWord) {
@@ -235,19 +250,22 @@ function keywordMatchesTitle(keyword: string, title: string) {
 export function isRelevantVacancy(vacancy: MatchInput, settings: MatchSettings) {
   const title = vacancy.title ?? "";
   const normalizedTitle = normalizeText(title);
+  const manualKeywords = settings.keywords.map((keyword) => keyword.trim()).filter(Boolean);
+  const relevantKeywords = manualKeywords.length > 0 ? manualKeywords : deriveSearchKeywordsFromResume(settings.resumeText);
+  const hasKeywordRole = relevantKeywords.some((keyword) => keywordMatchesTitle(keyword, title));
+  const hasStrictManagementRole = isRelevantManagementTitle(title);
 
   if (settings.excludedWords && vacancyHasExcludedWords(vacancy, settings.excludedWords)) {
     return false;
+  }
+
+  if (hasKeywordRole || hasStrictManagementRole) {
+    return true;
   }
 
   if (irrelevantTitlePatterns.some((pattern) => pattern.test(normalizedTitle))) {
     return false;
   }
 
-  const manualKeywords = settings.keywords.map((keyword) => keyword.trim()).filter(Boolean);
-  const relevantKeywords = manualKeywords.length > 0 ? manualKeywords : deriveSearchKeywordsFromResume(settings.resumeText);
-  const hasKeywordRole = relevantKeywords.some((keyword) => keywordMatchesTitle(keyword, title));
-  const hasStrictManagementRole = relevantManagementTitlePatterns.some((pattern) => pattern.test(normalizedTitle));
-
-  return hasKeywordRole || hasStrictManagementRole;
+  return false;
 }

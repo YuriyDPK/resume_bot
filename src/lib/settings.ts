@@ -15,7 +15,10 @@ export const executiveDefaultKeywords = [
   "Коммерческий директор",
   "Управляющий директор",
   "Руководитель отдела",
-  "Руководитель проекта"
+  "Руководитель проекта",
+  "Руководитель проектов",
+  "Менеджер проектов",
+  "Project manager"
 ];
 
 async function seedExecutiveKeywords() {

@@ -17,6 +17,17 @@ export type ScrapedVacancy = {
   description?: string | null;
 };
 
+export type SearchPageProgress = {
+  keyword: string;
+  page: number;
+  scraped: number;
+  accepted: number;
+  skippedKnown: number;
+  skippedCity: number;
+  skippedInvalid: number;
+  skippedRejected: number;
+};
+
 export type HHAutomationErrorCode = "captcha" | "auth" | "stopped" | "apply" | "browser";
 
 export class HHAutomationError extends Error {
@@ -218,14 +229,17 @@ export class HHPlaywrightService {
     excludedUrls?: string[];
     stopRequested?: StopSignal;
     delayRange?: DelayRange;
-    onVacancy?: (vacancy: ScrapedVacancy) => Promise<void>;
+    onVacancy?: (vacancy: ScrapedVacancy) => Promise<boolean | void>;
+    onPage?: (progress: SearchPageProgress) => Promise<void> | void;
   }) {
     const page = await this.ensureAuthorized(params.stopRequested);
     const results = new Map<string, ScrapedVacancy>();
     const excludedUrls = new Set((params.excludedUrls ?? []).map(normalizeUrl).filter(Boolean));
     const exhaustedKeywords = new Set<string>();
+    const emptyPagesByKeyword = new Map<string, number>();
     const itemsPerPage = 20;
     const maxPages = 100;
+    const maxEmptyPagesPerKeyword = 3;
     const cities = splitCities(params.city);
     const areaIds = params.allRussia ? ["113"] : await this.resolveAreaIds(page, cities);
     const searchDelayRange = params.delayRange ?? { minSeconds: 1, maxSeconds: 3 };
@@ -243,6 +257,7 @@ export class HHPlaywrightService {
         url.searchParams.set("text", keyword);
         url.searchParams.set("items_on_page", String(itemsPerPage));
         url.searchParams.set("page", String(pageNumber));
+        url.searchParams.set("order_by", "publication_time");
         if (params.minSalary) url.searchParams.set("salary", String(params.minSalary));
         for (const areaId of areaIds) url.searchParams.append("area", areaId);
         if (params.remoteOnly) url.searchParams.set("schedule", "remote");
@@ -311,13 +326,33 @@ export class HHPlaywrightService {
           .filter((item) => item.title && item.url);
         });
 
+        const progress: SearchPageProgress = {
+          keyword,
+          page: pageNumber + 1,
+          scraped: scraped.length,
+          accepted: 0,
+          skippedKnown: 0,
+          skippedCity: 0,
+          skippedInvalid: 0,
+          skippedRejected: 0
+        };
+
         if (scraped.length === 0) exhaustedKeywords.add(keyword);
 
         for (const item of scraped) {
           const normalizedUrl = normalizeUrl(item.url);
-          if (!normalizedUrl || !isVacancyUrl(normalizedUrl)) continue;
-          if (excludedUrls.has(normalizedUrl)) continue;
-          if (!params.allRussia && !cityMatches(item.city, params.city)) continue;
+          if (!normalizedUrl || !isVacancyUrl(normalizedUrl)) {
+            progress.skippedInvalid += 1;
+            continue;
+          }
+          if (excludedUrls.has(normalizedUrl)) {
+            progress.skippedKnown += 1;
+            continue;
+          }
+          if (!params.allRussia && !cityMatches(item.city, params.city)) {
+            progress.skippedCity += 1;
+            continue;
+          }
 
           const vacancy = {
             externalId: extractExternalId(normalizedUrl),
@@ -329,12 +364,40 @@ export class HHPlaywrightService {
             url: normalizedUrl
           };
 
-          results.set(normalizedUrl, vacancy);
           excludedUrls.add(normalizedUrl);
-          await params.onVacancy?.(vacancy);
+          const accepted = (await params.onVacancy?.(vacancy)) ?? true;
+          if (!accepted) {
+            progress.skippedRejected += 1;
+            continue;
+          }
+
+          results.set(normalizedUrl, vacancy);
+          progress.accepted += 1;
 
           if (results.size >= params.maxResults) break;
         }
+
+        if (progress.accepted > 0) {
+          emptyPagesByKeyword.set(keyword, 0);
+        } else if (!exhaustedKeywords.has(keyword)) {
+          const emptyPages = (emptyPagesByKeyword.get(keyword) ?? 0) + 1;
+          emptyPagesByKeyword.set(keyword, emptyPages);
+          if (emptyPages >= maxEmptyPagesPerKeyword) {
+            exhaustedKeywords.add(keyword);
+          }
+          await writeLog("info", "Страница HH без новых вакансий", {
+            keyword,
+            page: pageNumber + 1,
+            scraped: progress.scraped,
+            skippedKnown: progress.skippedKnown,
+            skippedCity: progress.skippedCity,
+            skippedInvalid: progress.skippedInvalid,
+            skippedRejected: progress.skippedRejected,
+            emptyPages
+          });
+        }
+
+        await params.onPage?.(progress);
       }
 
       if (exhaustedKeywords.size === params.keywords.length) break;

@@ -11,9 +11,46 @@ type MatchSettings = {
   minSalary?: number | null;
   resumeText?: string | null;
   keywords: string[];
+  excludedWords?: string[];
 };
 
 const legacyFrontendKeywordSet = new Set(["frontend developer", "typescript", "next.js"]);
+const irrelevantTitlePatterns = [
+  /ассистент/i,
+  /помощник/i,
+  /секретар/i,
+  /стаж[её]р/i,
+  /товаровед/i,
+  /продавец/i,
+  /кассир/i,
+  /консультант/i,
+  /оператор/i,
+  /курьер/i,
+  /водитель/i,
+  /кладовщик/i,
+  /комплектовщик/i,
+  /администратор/i,
+  /координатор/i,
+  /подбор/i,
+  /адаптац/i,
+  /персонал/i,
+  /специалист/i,
+  /эксперт/i,
+  /менеджер/i,
+  /\b(?:assistant|intern|seller|cashier|consultant|operator|driver|courier|warehouse|administrator|coordinator|recruiter|personnel|specialist|expert|manager|hr)\b/i
+];
+const relevantManagementTitlePatterns = [
+  /исполнительн\w*\s+директор/i,
+  /операционн\w*\s+директор/i,
+  /коммерческ\w*\s+директор/i,
+  /управляющ\w*\s+директор/i,
+  /генеральн\w*\s+директор/i,
+  /директор\w*\s+(?:филиал|по\s+развитию|по\s+продаж|по\s+производств|по\s+операцион|продуктов|производств)/i,
+  /заместител\w*\s+(?:генеральн\w*\s+)?директор/i,
+  /руководител\w*\s+(?:отдел|подразделен|направлен|проект|производств|филиал)/i,
+  /\b(?:executive|operations|commercial|managing|general|branch|development|production)\s+director\b/i,
+  /\b(?:ceo|coo|cco|head of)\b/i
+];
 
 const rolePatterns = [
   { query: "Исполнительный директор", patterns: [/исполнительн\w* директор/i, /executive director/i, /ceo/i] },
@@ -99,13 +136,11 @@ function looksLikeLegacyFrontendKeywords(keywords: string[]) {
 
 export function deriveSearchKeywordsFromResume(resumeText: string | null | undefined) {
   const text = resumeText ?? "";
-  const normalized = normalizeText(text);
   const foundRoles = rolePatterns
     .filter((role) => role.patterns.some((pattern) => pattern.test(text)))
     .map((role) => role.query);
 
-  const foundSkills = skillWords.filter((skill) => normalized.includes(normalizeText(skill))).slice(0, 4);
-  const queries = [...foundRoles.slice(0, 4), ...foundSkills.slice(0, 3)];
+  const queries = foundRoles.slice(0, 7);
 
   return Array.from(new Set(queries)).slice(0, 7);
 }
@@ -116,6 +151,10 @@ export function buildSearchQueries(keywords: string[], resumeText: string | null
 
   if (derived.length > 0 && looksLikeLegacyFrontendKeywords(manual)) {
     return derived;
+  }
+
+  if (manual.length > 0) {
+    return Array.from(new Set(manual)).slice(0, 12);
   }
 
   return Array.from(new Set([...manual, ...derived])).slice(0, 12);
@@ -180,4 +219,35 @@ export function calculateMatchScore(vacancy: MatchInput, settings: MatchSettings
   }
 
   return Math.max(0, Math.min(100, score));
+}
+
+function keywordMatchesTitle(keyword: string, title: string) {
+  const normalizedKeyword = normalizeText(keyword);
+  const normalizedTitle = normalizeText(title);
+
+  if (!normalizedKeyword || !normalizedTitle) return false;
+  if (normalizedTitle.includes(normalizedKeyword)) return true;
+
+  const keywordTokens = tokens(keyword);
+  return keywordTokens.length > 0 && keywordTokens.every((token) => normalizedTitle.includes(token));
+}
+
+export function isRelevantVacancy(vacancy: MatchInput, settings: MatchSettings) {
+  const title = vacancy.title ?? "";
+  const normalizedTitle = normalizeText(title);
+
+  if (settings.excludedWords && vacancyHasExcludedWords(vacancy, settings.excludedWords)) {
+    return false;
+  }
+
+  if (irrelevantTitlePatterns.some((pattern) => pattern.test(normalizedTitle))) {
+    return false;
+  }
+
+  const manualKeywords = settings.keywords.map((keyword) => keyword.trim()).filter(Boolean);
+  const relevantKeywords = manualKeywords.length > 0 ? manualKeywords : deriveSearchKeywordsFromResume(settings.resumeText);
+  const hasKeywordRole = relevantKeywords.some((keyword) => keywordMatchesTitle(keyword, title));
+  const hasStrictManagementRole = relevantManagementTitlePatterns.some((pattern) => pattern.test(normalizedTitle));
+
+  return hasKeywordRole || hasStrictManagementRole;
 }

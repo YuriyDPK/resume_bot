@@ -2,7 +2,7 @@ import type { Vacancy } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { HHAutomationError, HHPlaywrightService, type ScrapedVacancy } from "@/lib/hh/playwright";
 import { writeLog } from "@/lib/log";
-import { buildSearchQueries, calculateMatchScore, deriveSearchKeywordsFromResume, parseExcludedWords, vacancyHasExcludedWords } from "@/lib/matching";
+import { buildSearchQueries, calculateMatchScore, deriveSearchKeywordsFromResume, isRelevantVacancy, parseExcludedWords, vacancyHasExcludedWords } from "@/lib/matching";
 import { prisma } from "@/lib/prisma";
 import { ensureSettings } from "@/lib/settings";
 
@@ -171,6 +171,19 @@ class HHRunner {
           savedDuringSearch += saved;
           this.state.processed = savedDuringSearch;
           this.state.message = "Поиск: сохранено " + savedDuringSearch + " из " + settings.searchLimit;
+          return saved > 0;
+        },
+        onPage: (progress) => {
+          if (progress.accepted > 0) return;
+          this.state.message =
+            "Поиск: сохранено " +
+            savedDuringSearch +
+            " из " +
+            settings.searchLimit +
+            ". Проверяю " +
+            progress.keyword +
+            ", стр. " +
+            progress.page;
         }
       });
 
@@ -224,6 +237,11 @@ class HHRunner {
 
       if (vacancyHasExcludedWords(vacancy, settings.excludedWords)) {
         await writeLog("info", "Вакансия пропущена по стоп-словам", { title: vacancy.title, url: vacancy.url });
+        continue;
+      }
+
+      if (!isRelevantVacancy(vacancy, settings)) {
+        await writeLog("info", "Вакансия пропущена: не по специальности", { title: vacancy.title, url: vacancy.url });
         continue;
       }
 
@@ -401,8 +419,7 @@ class HHRunner {
 
       const vacancies = await prisma.vacancy.findMany({
         where: {
-          status: { in: ["found", "pending"] },
-          searchBatchId: settings.activeSearchBatchId ?? "__no_active_search__"
+          status: { in: ["found", "pending"] }
         },
         orderBy: [{ matchScore: "desc" }, { createdAt: "desc" }],
         take: target

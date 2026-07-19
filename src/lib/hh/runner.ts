@@ -141,10 +141,30 @@ class HHRunner {
 
       this.state.target = settings.searchLimit;
       await prisma.setting.update({ where: { id: 1 }, data: { activeSearchBatchId: null } });
-      const knownVacancies = await prisma.seenVacancy.findMany({ select: { url: true } });
+      const knownVacancies = await prisma.vacancy.findMany({ select: { url: true } });
       const searchBatchId = randomUUID();
       activeBatchId = searchBatchId;
       const city = settings.searchAllRussia ? null : settings.city;
+      const searchStats = {
+        pages: 0,
+        scraped: 0,
+        accepted: 0,
+        skippedKnown: 0,
+        skippedCity: 0,
+        skippedInvalid: 0,
+        skippedRejected: 0
+      };
+
+      await writeLog("info", "Поиск запущен", {
+        keywords,
+        city,
+        minSalary: settings.minSalary,
+        searchLimit: settings.searchLimit,
+        searchAllRussia: settings.searchAllRussia,
+        remoteOnly: settings.remoteOnly,
+        excludedWords,
+        knownVacancies: knownVacancies.length
+      });
 
       await this.automation.searchVacancies({
         keywords,
@@ -174,6 +194,14 @@ class HHRunner {
           return saved > 0;
         },
         onPage: (progress) => {
+          searchStats.pages += 1;
+          searchStats.scraped += progress.scraped;
+          searchStats.accepted += progress.accepted;
+          searchStats.skippedKnown += progress.skippedKnown;
+          searchStats.skippedCity += progress.skippedCity;
+          searchStats.skippedInvalid += progress.skippedInvalid;
+          searchStats.skippedRejected += progress.skippedRejected;
+
           if (progress.accepted > 0) return;
           this.state.message =
             "Поиск: сохранено " +
@@ -192,7 +220,19 @@ class HHRunner {
       await prisma.setting.update({ where: { id: 1 }, data: { activeSearchBatchId: searchBatchId } });
 
       this.state.processed = saved;
-      await writeLog("info", "Поиск завершен", { saved, skippedKnown: knownVacancies.length, searchBatchId });
+      await writeLog("info", "Поиск завершен", { saved, skippedKnown: knownVacancies.length, searchStats, searchBatchId });
+      if (saved === 0) {
+        this.finish(
+          "Поиск завершен. Найдено новых вакансий: 0. HH-карточек проверено: " +
+            searchStats.scraped +
+            ", уже видели: " +
+            searchStats.skippedKnown +
+            ", не подошли по фильтрам: " +
+            (searchStats.skippedCity + searchStats.skippedInvalid + searchStats.skippedRejected)
+        );
+        return;
+      }
+
       this.finish("Поиск завершен. Найдено новых вакансий: " + saved);
     } catch (error) {
       const message = errorMessage(error);

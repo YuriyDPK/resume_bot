@@ -1,8 +1,10 @@
 "use client";
 
-import { type FormEvent, useState, useTransition } from "react";
+import { type FormEvent, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Download, Save } from "lucide-react";
+import { Clock3, Download, FileText, MessageSquare, Save, ScanText, Search } from "lucide-react";
+import { ResumeMergeDialog } from "@/components/resume-merge-dialog";
+import { mergeResumeFields, resumeConflicts, type ParsedResume, type ResumeMergeMode } from "@/lib/resume-parser";
 
 export type SettingsFormValue = {
   keywords: string;
@@ -22,14 +24,21 @@ export type SettingsFormValue = {
   applyDelayMaxSeconds: number;
 };
 
-export function SettingsForm({ initialValue }: { initialValue: SettingsFormValue }) {
+export function SettingsForm({ initialValue, profileId }: { initialValue: SettingsFormValue; profileId: number }) {
   const router = useRouter();
+  const [dirty, setDirty] = useState(false);
   const [value, setValue] = useState(initialValue);
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [isImporting, startImportTransition] = useTransition();
+  const [isParsing, startParseTransition] = useTransition();
+  const [proposal, setProposal] = useState<{ parsed: ParsedResume; url: string } | null>(null);
+  const [parseNotes, setParseNotes] = useState<string[]>([]);
+  const latestValue = useRef(value);
+  useEffect(() => { latestValue.current = value; }, [value]);
 
   function update<K extends keyof SettingsFormValue>(key: K, nextValue: SettingsFormValue[K]) {
+    setDirty(true);
     setValue((current) => ({ ...current, [key]: nextValue }));
   }
 
@@ -40,11 +49,12 @@ export function SettingsForm({ initialValue }: { initialValue: SettingsFormValue
       const response = await fetch("/api/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(value)
+        body: JSON.stringify({ ...value, profileId })
       });
       const payload = await response.json().catch(() => ({}));
       setMessage(response.ok ? "Настройки сохранены" : payload.error ?? "Не удалось сохранить настройки");
       if (response.ok && payload.settings) {
+        setDirty(false);
         setValue((current) => ({
           ...current,
           ...payload.settings,
@@ -65,7 +75,7 @@ export function SettingsForm({ initialValue }: { initialValue: SettingsFormValue
       const response = await fetch("/api/resume/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resumeUrl: value.resumeUrl })
+        body: JSON.stringify({ resumeUrl: value.resumeUrl, profileId })
       });
       const payload = await response.json().catch(() => ({}));
 
@@ -79,28 +89,66 @@ export function SettingsForm({ initialValue }: { initialValue: SettingsFormValue
         resumeText: payload.resumeText ?? current.resumeText,
         keywords: Array.isArray(payload.keywords) && payload.keywords.length > 0 ? payload.keywords.join("\n") : current.keywords
       }));
-      setMessage("Резюме загружено из HH, ключевые слова обновлены");
+      setDirty(true);
+      setMessage("Резюме загружено. Ваши поисковые запросы сохранены; пустой список заполняется желаемой должностью из резюме.");
       router.refresh();
     });
   }
 
+  function applyParsed(parsed: ParsedResume, mode: ResumeMergeMode) {
+    setDirty(true);
+    setValue((current) => mergeResumeFields(current, parsed.fields, mode));
+    setParseNotes(parsed.notes);
+    setProposal(null);
+    setMessage(mode === "empty" ? "Пустые поля заполнены. Существующие значения сохранены. Проверьте форму и нажмите «Сохранить»." :
+      "Данные из резюме подставлены. Проверьте форму и нажмите «Сохранить».");
+  }
+
+  function parseResume() {
+    const url = value.resumeUrl.trim();
+    setMessage(null);
+    setParseNotes([]);
+    startParseTransition(async () => {
+      try {
+        const response = await fetch("/api/resume/parse", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ resumeUrl: url, profileId }) });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload.parsed) { setMessage(payload.error ?? "Не удалось разобрать резюме"); return; }
+        if (latestValue.current.resumeUrl.trim() !== url) { setMessage("Ссылка изменилась во время разбора. Повторите разбор новой ссылки."); return; }
+        const parsed = payload.parsed as ParsedResume;
+        if (resumeConflicts(latestValue.current, parsed.fields).length) setProposal({ parsed, url });
+        else applyParsed(parsed, "empty");
+      } catch { setMessage("Не удалось связаться с ботом. Повторите разбор резюме."); }
+    });
+  }
+
   return (
-    <form className="panel settings-form" onSubmit={submit}>
+    <form data-dirty={dirty} className="settings-form" onSubmit={submit}>
+      <section className="panel settings-section" id="resume-profile"><header className="settings-section-heading"><span className="settings-section-icon"><FileText size={19} /></span><div><h2>Резюме из HH</h2><p>Загрузите профиль или заполните настройки из резюме по ссылке.</p></div><span className="section-number">01</span></header><div className="settings-section-body">
       <label className="field-group full-span">
         <span>Ссылка на резюме HH</span>
         <input value={value.resumeUrl} onChange={(event) => update("resumeUrl", event.target.value)} placeholder="https://hh.ru/resume/..." />
       </label>
 
-      <div className="form-actions full-span compact-actions">
-        <button className="button secondary" type="button" disabled={isImporting || isPending || !value.resumeUrl.trim()} onClick={importResume}>
+      <div className="form-actions full-span compact-actions resume-import-actions">
+        <button className="button secondary" type="button" disabled={isImporting || isParsing || isPending || !value.resumeUrl.trim()} onClick={importResume}>
           <Download size={17} />
           <span>Загрузить из HH</span>
         </button>
+        <button className="button secondary" type="button" disabled={isImporting || isParsing || isPending || !value.resumeUrl.trim()} onClick={parseResume}>
+          <ScanText size={17} /><span>{isParsing ? "Разбираю резюме…" : "Распарсить по ссылке"}</span>
+        </button>
+        <small className="muted-text">Должность, город, желаемая зарплата, формат работы и профиль для подбора — из резюме HH. Существующие данные заменяются только после вашего выбора.</small>
       </div>
+
+      {parseNotes.length ? <div className="resume-parse-notes full-span" role="status"><strong>Обратите внимание</strong><ul>{parseNotes.map((note) => <li key={note}>{note}</li>)}</ul></div> : null}
+      </div></section>
+
+      <section className="panel settings-section" id="search-filters"><header className="settings-section-heading"><span className="settings-section-icon"><Search size={19} /></span><div><h2>Поиск вакансий</h2><p>Профессии, география и условия подходящей работы.</p></div><span className="section-number">02</span></header><div className="settings-section-body">
 
       <label className="field-group full-span">
         <span>Ключевые слова для поиска</span>
-        <textarea value={value.keywords} onChange={(event) => update("keywords", event.target.value)} rows={4} />
+        <textarea value={value.keywords} onChange={(event) => update("keywords", event.target.value)} rows={4} placeholder={"Например: бухгалтер\nводитель категории B\nврач-терапевт"} />
+        <small>Любая профессия или набор навыков. Каждый запрос — отдельный вариант поиска. Эти настройки имеют приоритет над текстом резюме.</small>
       </label>
 
       <label className="field-group full-span">
@@ -111,7 +159,13 @@ export function SettingsForm({ initialValue }: { initialValue: SettingsFormValue
           rows={3}
           placeholder="Например: стажер, junior, холодные звонки"
         />
+        <small>Через запятую, точку с запятой или с новой строки. Проверяются название, компания и полное описание, включая формы русских слов. Запреты действуют и перед откликом.</small>
       </label>
+
+      <div className="field-group checkbox-group full-span">
+        <span>Встроенный браузер HH</span>
+        <small>Вход, отклики и ручные проверки открываются прямо внутри бота. Отдельное окно браузера не требуется. Панель можно свернуть во время работы.</small>
+      </div>
 
       <label className="field-group">
         <span>Города (через запятую)</span>
@@ -148,6 +202,9 @@ export function SettingsForm({ initialValue }: { initialValue: SettingsFormValue
           onChange={(event) => update("minSalary", event.target.value === "" ? "" : Number(event.target.value))}
         />
       </label>
+      </div></section>
+
+      <section className="panel settings-section" id="limits"><header className="settings-section-heading"><span className="settings-section-icon"><Clock3 size={19} /></span><div><h2>Лимиты и паузы</h2><p>Управляйте темпом поиска и отправки откликов.</p></div><span className="section-number">03</span></header><div className="settings-section-body">
 
       <label className="field-group">
         <span>Дневной лимит</span>
@@ -209,24 +266,32 @@ export function SettingsForm({ initialValue }: { initialValue: SettingsFormValue
           onChange={(event) => update("applyDelayMaxSeconds", Math.max(0, Number(event.target.value)))}
         />
       </label>
+      </div></section>
+
+      <section className="panel settings-section" id="profile-text"><header className="settings-section-heading"><span className="settings-section-icon"><MessageSquare size={19} /></span><div><h2>Профиль и письмо</h2><p>Опыт для подбора вакансий и текст сопроводительного письма.</p></div><span className="section-number">04</span></header><div className="settings-section-body">
 
       <label className="field-group full-span">
         <span>Профиль резюме для подбора</span>
-        <textarea value={value.resumeText} onChange={(event) => update("resumeText", event.target.value)} rows={6} />
+        <textarea aria-label="Профиль резюме для подбора" value={value.resumeText} onChange={(event) => update("resumeText", event.target.value)} rows={7} placeholder={"Желаемая должность: ваша профессия\nОпыт, навыки и пожелания к работе"} />
       </label>
 
       <label className="field-group full-span">
         <span>Шаблон сопроводительного письма</span>
         <textarea value={value.coverLetterTemplate} onChange={(event) => update("coverLetterTemplate", event.target.value)} rows={6} />
       </label>
+      </div></section>
 
-      <div className="form-actions full-span">
-        <button className="button primary" disabled={isPending || isImporting}>
+      <div className="form-actions full-span settings-save-bar">
+        <button className="button primary" disabled={isPending || isImporting || isParsing}>
           <Save size={17} />
           <span>Сохранить</span>
         </button>
-        {message ? <span className="muted-text">{message}</span> : null}
+        {message ? <span className="muted-text" role="status">{message}</span> : null}
       </div>
+      {proposal ? <ResumeMergeDialog parsed={proposal.parsed} current={value} onChoose={(mode) => {
+        if (value.resumeUrl.trim() !== proposal.url) { setProposal(null); setMessage("Ссылка изменилась. Повторите разбор."); return; }
+        applyParsed(proposal.parsed, mode);
+      }} onCancel={() => { setProposal(null); setMessage("Разбор отменён. Данные в форме не изменены."); }} /> : null}
     </form>
   );
 }

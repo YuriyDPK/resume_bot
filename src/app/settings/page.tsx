@@ -30,11 +30,12 @@ export default async function SettingsPage() {
     <div className="page-stack">
       <header className="page-header">
         <div>
-          <p className="eyebrow">Preferences</p>
-          <h1>Settings</h1>
+          <p className="eyebrow">Ваш профиль поиска</p>
+          <h1>Настройки</h1>
+          <p className="page-subtitle">Резюме «{settings.name}»: отдельные настройки поиска и откликов.</p>
         </div>
       </header>
-      <SettingsForm initialValue={value} />
+      <SettingsForm key={settings.id} initialValue={value} profileId={settings.id} />
     </div>
   );
 }

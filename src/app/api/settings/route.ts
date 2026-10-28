@@ -1,7 +1,13 @@
+import { resumeTitleFromText } from "@/lib/resume-parser";
+import { activeProfileId, profileChangePending, profileMatches, staleProfileMessage } from "@/lib/profiles";
 import { NextResponse } from "next/server";
 import { writeLog } from "@/lib/log";
 import { prisma } from "@/lib/prisma";
 import { ensureSettings } from "@/lib/settings";
+import { parseExcludedWords } from "@/lib/vacancy-filter";
+import { hhRunner } from "@/lib/hh/runner";
+import { normalizeHHResumeUrl } from "@/lib/hh/resume-url";
+import { resumeIdFromUrl } from "@/lib/hh/ownership";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,18 +22,6 @@ function cleanKeywords(value: unknown) {
         .filter(Boolean)
     )
   );
-}
-
-function cleanTextList(value: unknown) {
-  const raw = Array.isArray(value) ? value.join("\n") : String(value ?? "");
-  return Array.from(
-    new Set(
-      raw
-        .split(/[\n,;]/)
-        .map((item) => item.trim())
-        .filter(Boolean)
-    )
-  ).join("\n");
 }
 
 function positiveNumber(value: unknown, fallback: number) {
@@ -56,19 +50,41 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
-  const body = await request.json();
+  if (hhRunner.getState().running) {
+    return NextResponse.json({ error: "Остановите текущий процесс перед изменением настроек" }, { status: 409 });
+  }
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: "Некорректные настройки" }, { status: 400 });
+  }
+  if (profileChangePending() || !await profileMatches(body.profileId)) return NextResponse.json({ error: staleProfileMessage }, { status: 409 });
+  const profileId = await activeProfileId();
+  const previous = await ensureSettings(profileId);
+  const resumeUrl = body.resumeUrl ? normalizeHHResumeUrl(body.resumeUrl) : null;
+  if (body.resumeUrl && !resumeUrl) return NextResponse.json({ error: "Укажите корректную ссылку на своё резюме HH" }, { status: 400 });
+  let owner: { accountId: string } | undefined;
+  if (resumeUrl && resumeIdFromUrl(resumeUrl) !== resumeIdFromUrl(previous.resumeUrl)) {
+    try {
+      if (!hhRunner.supportsVerifiedResumes) throw new Error("Завершите текущий сеанс HH для обновления проверки резюме");
+      owner = await hhRunner.verifyOwnResume(resumeUrl);
+      if (previous.hhAccountId && previous.hhAccountId !== owner.accountId) throw new Error("Для другого HH-аккаунта добавьте отдельное резюме");
+    } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Не удалось подтвердить владельца резюме" }, { status: 409 }); }
+  }
   const keywords = cleanKeywords(body.keywords);
   const applyDelayRange = rangeFromBody(body, "applyDelayMinSeconds", "applyDelayMaxSeconds", 3, 8);
   const searchDelayRange = rangeFromBody(body, "searchDelayMinSeconds", "searchDelayMaxSeconds", 1, 3);
 
   const settingData = {
-    id: 1,
-    city: String(body.city ?? "Москва").trim() || "Москва",
+    id: profileId,
+    ...(resumeTitleFromText(String(body.resumeText ?? "")) ? { name: resumeTitleFromText(String(body.resumeText)) } : {}),
+    city: String(body.city ?? "").trim(),
     minSalary: optionalNumber(body.minSalary),
     coverLetterTemplate: String(body.coverLetterTemplate ?? "").trim(),
     resumeText: String(body.resumeText ?? "").trim(),
-    resumeUrl: String(body.resumeUrl ?? "").trim() || null,
-    excludedWords: cleanTextList(body.excludedWords),
+    resumeUrl,
+    ...(owner ? { hhAccountId: owner.accountId, resumeVerifiedAt: new Date() } : {}),
+    excludedWords: parseExcludedWords(Array.isArray(body.excludedWords) ? body.excludedWords.map(String) : String(body.excludedWords ?? "")).join("\n"),
+    browserHeadless: true,
     dailyLimit: Math.max(1, optionalNumber(body.dailyLimit) ?? 5),
     searchLimit: Math.min(1000, Math.max(1, optionalNumber(body.searchLimit) ?? 50)),
     searchAllRussia: Boolean(body.searchAllRussia),
@@ -81,20 +97,20 @@ export async function PUT(request: Request) {
 
   const setting = await prisma.$transaction(async (tx) => {
     const saved = await tx.setting.upsert({
-      where: { id: 1 },
+      where: { id: profileId },
       create: settingData,
       update: settingData
     });
 
-    await tx.searchKeyword.deleteMany();
+    await tx.searchKeyword.deleteMany({ where: { profileId } });
     if (keywords.length > 0) {
-      await tx.searchKeyword.createMany({ data: keywords.map((value) => ({ value, enabled: true })) });
+      await tx.searchKeyword.createMany({ data: keywords.map((value) => ({ profileId, value, enabled: true })) });
     }
     return saved;
   });
 
-  await writeLog("info", "Настройки обновлены", { keywords: keywords.length });
-  const updated = await ensureSettings();
+  await writeLog("info", "Настройки обновлены", { keywords: keywords.length }, profileId);
+  const updated = await ensureSettings(profileId);
 
   return NextResponse.json({ settings: { ...setting, keywords: updated.keywords } });
 }

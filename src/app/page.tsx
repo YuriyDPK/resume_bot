@@ -1,91 +1,32 @@
-import { AlertTriangle, BriefcaseBusiness, CheckCircle2, Clock3, SkipForward, XCircle } from "lucide-react";
-import { unstable_noStore as noStore } from "next/cache";
+import Link from "next/link";
+import { ArrowUpRight, BriefcaseBusiness, CheckCircle2, Clock3, Settings2, SkipForward, XCircle } from "lucide-react";
 import { DashboardActions } from "@/components/dashboard-actions";
+import { ActivityLog } from "@/components/activity-log";
 import { hhRunner } from "@/lib/hh/runner";
-import { prisma } from "@/lib/prisma";
+import { getHHAccount } from "@/lib/hh/account";
+import { dashboardData } from "@/lib/dashboard-store";
 
 export const dynamic = "force-dynamic";
-
-function startOfToday() {
-  const date = new Date();
-  date.setHours(0, 0, 0, 0);
-  return date;
-}
-
-const statusLabels: Record<string, string> = {
-  info: "Info",
-  warn: "Warn",
-  error: "Error"
-};
-
 export default async function DashboardPage() {
-  noStore();
-  const today = startOfToday();
-
-  const [vacanciesFound, appliedToday, pending, skipped, failed, recentLogs] = await Promise.all([
-    prisma.vacancy.count(),
-    prisma.application.count({ where: { status: "applied", appliedAt: { gte: today } } }),
-    prisma.vacancy.count({ where: { status: "pending" } }),
-    prisma.vacancy.count({ where: { status: "skipped" } }),
-    prisma.vacancy.count({ where: { status: "failed" } }),
-    prisma.log.findMany({ orderBy: { createdAt: "desc" }, take: 6 })
-  ]);
-
+  const [data, account] = await Promise.all([dashboardData(), getHHAccount()]);
+  const { settings } = data;
   const metrics = [
-    { label: "Найдено вакансий", value: vacanciesFound, icon: BriefcaseBusiness, tone: "blue" },
-    { label: "Откликов сегодня", value: appliedToday, icon: CheckCircle2, tone: "green" },
-    { label: "Ожидают отклика", value: pending, icon: Clock3, tone: "amber" },
-    { label: "Пропущено", value: skipped, icon: SkipForward, tone: "slate" },
-    { label: "Ошибки", value: failed, icon: XCircle, tone: "rose" }
+    { label: "Найдено вакансий", value: data.vacanciesFound, icon: BriefcaseBusiness, tone: "blue", href: "/vacancies?status=all" },
+    { label: "Откликов сегодня", value: data.appliedToday, icon: CheckCircle2, tone: "green", href: "/vacancies?status=applied&appliedToday=true" },
+    { label: "Ожидают отклика", value: data.pending, icon: Clock3, tone: "amber", href: "/vacancies?status=active" },
+    { label: "Пропущено", value: data.skipped, icon: SkipForward, tone: "slate", href: "/vacancies?status=skipped" },
+    { label: "Ошибки", value: data.failed, icon: XCircle, tone: "rose", href: "/vacancies?status=failed" }
   ];
-
-  return (
-    <div className="page-stack">
-      <header className="page-header">
-        <div>
-          <p className="eyebrow">HH.ru automation</p>
-          <h1>Dashboard</h1>
-        </div>
-        <DashboardActions initialState={hhRunner.getState()} />
-      </header>
-
-      <section className="metrics-grid" aria-label="Метрики">
-        {metrics.map((metric) => {
-          const Icon = metric.icon;
-          return (
-            <article className="metric-card" key={metric.label}>
-              <span className={"metric-icon " + metric.tone}>
-                <Icon size={20} />
-              </span>
-              <span className="metric-label">{metric.label}</span>
-              <strong>{metric.value}</strong>
-            </article>
-          );
-        })}
-      </section>
-
-      <section className="panel wide-panel">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">Activity</p>
-            <h2>Логи</h2>
-          </div>
-          <AlertTriangle size={20} />
-        </div>
-        <div className="log-list">
-          {recentLogs.length === 0 ? (
-            <p className="empty-state">Пока нет событий.</p>
-          ) : (
-            recentLogs.map((log) => (
-              <div className="log-row" key={log.id}>
-                <span className={"status-pill " + log.level}>{statusLabels[log.level]}</span>
-                <span>{log.message}</span>
-                <time>{log.createdAt.toLocaleString("ru-RU")}</time>
-              </div>
-            ))
-          )}
-        </div>
-      </section>
-    </div>
-  );
+  return <div className="page-stack dashboard-page">
+    <header className="page-header"><div><p className="eyebrow">Ваш поиск работы</p><h1>Обзор</h1><p className="page-subtitle">Резюме «{settings.name}» · вакансии, отклики и события этого профиля.</p></div><DashboardActions profileId={settings.id} initialState={hhRunner.getState()} initialAccount={account} /></header>
+    <section className="metrics-grid" aria-label="Метрики">{metrics.map((metric) => { const Icon = metric.icon; return <Link className="metric-card metric-link" key={metric.label} href={metric.href}>
+      <div className="metric-card-top"><span className={"metric-icon " + metric.tone}><Icon size={19} /></span><ArrowUpRight size={16} /></div><span className="metric-label">{metric.label}</span><strong>{metric.value}</strong>
+    </Link>; })}</section>
+    <section className="panel search-summary"><div className="section-heading"><div><p className="eyebrow">Действующие настройки</p><h2>Что ищет бот</h2></div><Link className="button secondary small" href="/settings#search-filters"><Settings2 size={15} />Изменить фильтры</Link></div>
+      <div className="search-summary-grid"><div><small>Ключевые слова</small><div className="filter-chips">{settings.keywords.length ? settings.keywords.map(({ value }) => <Link className="filter-chip" key={value} href={"/vacancies?status=all&q=" + encodeURIComponent(value)}>{value}<ArrowUpRight size={12} /></Link>) : <Link className="muted-text" href="/settings#search-filters">Добавить поисковые запросы →</Link>}</div></div>
+        <div><small>География и условия</small><div className="filter-chips"><Link className="filter-chip" href={settings.searchAllRussia ? "/vacancies?status=all" : "/vacancies?status=all&city=" + encodeURIComponent(settings.city)}>{settings.searchAllRussia ? "Вся Россия" : settings.city}</Link><Link className="filter-chip" href="/settings#search-filters">{settings.remoteOnly ? "Только удалённо" : "Любой формат"}</Link><Link className="filter-chip" href="/settings#search-filters">{settings.minSalary ? "От " + settings.minSalary.toLocaleString("ru-RU") + " ₽" : "Без порога зарплаты"}</Link></div></div>
+        <div><small>Лимиты поиска</small><p>До <strong>{settings.searchLimit}</strong> новых вакансий · <strong>{settings.dailyLimit}</strong> откликов в день</p><Link className="text-button" href="/auto-apply">Перейти к автооткликам <ArrowUpRight size={13} /></Link></div></div>
+    </section>
+    <ActivityLog initialData={data.activity} />
+  </div>;
 }

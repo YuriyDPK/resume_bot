@@ -1,36 +1,27 @@
+import { getHHAccount } from "@/lib/hh/account";
+import { ensureSettings } from "@/lib/settings";
 import { unstable_noStore as noStore } from "next/cache";
-import { VacancyTable, type VacancyRow } from "@/components/vacancy-table";
-import { prisma } from "@/lib/prisma";
+import { VacancyTable } from "@/components/vacancy-table";
+import { listVacancies } from "@/lib/vacancy-store";
+import { hhRunner } from "@/lib/hh/runner";
 
 export const dynamic = "force-dynamic";
 
-export default async function VacanciesPage() {
+export default async function VacanciesPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   noStore();
-  const vacancies = await prisma.vacancy.findMany({
-    orderBy: [{ matchScore: "desc" }, { createdAt: "desc" }],
-    take: 200
-  });
-
-  const rows: VacancyRow[] = vacancies.map((vacancy) => ({
-    id: vacancy.id,
-    title: vacancy.title,
-    company: vacancy.company,
-    salary: vacancy.salary,
-    city: vacancy.city,
-    url: vacancy.url,
-    matchScore: vacancy.matchScore,
-    status: vacancy.status
-  }));
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(await searchParams)) if (typeof value === "string") params.set(key, value);
+  const data = await listVacancies(params);
 
   return (
     <div className="page-stack">
       <header className="page-header">
         <div>
-          <p className="eyebrow">Vacancies</p>
+          <p className="eyebrow">Ваша очередь</p>
           <h1>Вакансии</h1>
         </div>
       </header>
-      <VacancyTable vacancies={rows} />
+      <VacancyTable key={params.toString()} data={data} resumeReady={Boolean((await ensureSettings()).resumeUrl) && (await getHHAccount()).status === "connected"} running={hhRunner.getState().running} />
     </div>
   );
 }

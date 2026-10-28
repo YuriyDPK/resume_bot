@@ -1,72 +1,30 @@
-import { hhConfig } from "@/lib/env";
+import { resumeTitleFromText } from "@/lib/resume-parser";
+import { neutralProfile } from "@/lib/default-settings";
 import { prisma } from "@/lib/prisma";
+import { activeProfileId } from "@/lib/profiles";
+import { deriveSearchKeywordsFromResume } from "@/lib/matching";
 
-const defaultResumeUrl = "https://hh.ru/resume/0f0a51ceff06ea07630039ed1f575a45573545?print=true";
-
-export const executiveDefaultResumeText = "Руководитель / директор / заместитель директора / исполнительный руководитель. Управление командой, операционное управление, стратегическое планирование, развитие бизнеса, коммерческое управление, управление продажами, бюджетирование, P&L, KPI, оптимизация бизнес-процессов, переговоры, административное управление, запуск и развитие подразделений.";
-
-export const executiveDefaultKeywords = [
-  "Исполнительный директор",
-  "Операционный директор",
-  "Заместитель директора",
-  "Руководитель подразделения",
-  "Директор филиала",
-  "Директор по развитию",
-  "Коммерческий директор",
-  "Управляющий директор",
-  "Руководитель отдела",
-  "Руководитель проекта",
-  "Руководитель проектов",
-  "Менеджер проектов",
-  "Project manager"
-];
-
-async function seedExecutiveKeywords() {
-  await prisma.searchKeyword.deleteMany();
-  await prisma.searchKeyword.createMany({
-    data: executiveDefaultKeywords.map((value) => ({ value, enabled: true }))
+export async function ensureSettings(profileId?: number) {
+  const id = profileId ?? await activeProfileId();
+  const setting = await prisma.setting.upsert({
+    where: { id }, update: {},
+    create: { ...neutralProfile, id }
   });
+  const keywords = await prisma.searchKeyword.findMany({ where: { profileId: id, enabled: true }, orderBy: { createdAt: "asc" } });
+  return { ...setting, name: resumeTitleFromText(setting.resumeText) || setting.name, keywords };
 }
 
-export async function ensureSettings() {
-  let setting = await prisma.setting.findUnique({ where: { id: 1 } });
-  const isNew = !setting;
-
-  if (!setting) {
-    setting = await prisma.setting.create({
-      data: {
-        id: 1,
-        city: hhConfig.defaultCity,
-        minSalary: null,
-        dailyLimit: 5,
-        searchLimit: 50,
-        searchAllRussia: false,
-        remoteOnly: false,
-        searchDelayMinSeconds: 1,
-        searchDelayMaxSeconds: 3,
-        applyDelayMinSeconds: 3,
-        applyDelayMaxSeconds: 8,
-        coverLetterTemplate:
-          "Здравствуйте! Заинтересовала ваша вакансия. Буду рад обсудить, чем мой управленческий опыт может быть полезен вашей компании.",
-        resumeText: executiveDefaultResumeText,
-        resumeUrl: defaultResumeUrl,
-        excludedWords: ""
-      }
-    });
-  }
-
-  let keywords = await prisma.searchKeyword.findMany({
-    where: { enabled: true },
-    orderBy: { createdAt: "asc" }
+export async function saveImportedResume(resumeUrl: string, resumeText: string, profileId?: number) {
+  const { id } = await ensureSettings(profileId);
+  return prisma.$transaction(async (tx) => {
+    await tx.setting.update({ where: { id }, data: { resumeUrl, resumeText, ...(resumeTitleFromText(resumeText) ? { name: resumeTitleFromText(resumeText) } : {}) } });
+    const existing = await tx.searchKeyword.findMany({ where: { profileId: id, enabled: true }, orderBy: { createdAt: "asc" } });
+    // Explicit user queries remain authoritative when importing or refreshing a resume.
+    if (existing.length > 0) return existing.map((keyword) => keyword.value);
+    const queries = deriveSearchKeywordsFromResume(resumeText);
+    for (const value of queries) {
+      await tx.searchKeyword.upsert({ where: { profileId_value: { profileId: id, value } }, create: { profileId: id, value, enabled: true }, update: { enabled: true } });
+    }
+    return queries;
   });
-
-  if (isNew && keywords.length === 0) {
-    await seedExecutiveKeywords();
-    keywords = await prisma.searchKeyword.findMany({
-      where: { enabled: true },
-      orderBy: { createdAt: "asc" }
-    });
-  }
-
-  return { ...setting, keywords };
 }

@@ -1,0 +1,47 @@
+import assert from 'node:assert/strict';
+import { chromium } from 'playwright';
+import { choose } from './ui-controls.mjs';
+const base=process.env.SMOKE_BASE_URL;
+if(!base || new URL(base).port==='3000')throw new Error('Use an isolated fixture server');
+const setting=(await(await fetch(base+'/api/settings')).json()).settings;
+assert.equal(setting.resumeText,'SMOKE_WORKSPACE_FIXTURE','Refusing writes outside fixture');
+const browser=await chromium.launch({headless:true});
+try {
+ const context=await browser.newContext({viewport:{width:1440,height:1000}});
+ const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto(base+'/vacancies?status=all',{waitUntil:'networkidle'});
+ assert.equal(await page.getByRole('combobox',{name:'Статус вакансий'}).count(),1);
+ await page.getByLabel('Статус вакансий').click();await page.getByRole('option',{name:'Все статусы',exact:true}).waitFor();
+ await page.screenshot({path:'test-results/radix-vacancy-select.png'});await page.keyboard.press('Escape');
+ const firstRow=page.locator('tbody tr').first();
+ await firstRow.click({button:'right'});await page.getByRole('menuitem',{name:'Не интересует…',exact:true}).click();
+ const word=page.getByLabel('Нежелательное слово или фраза');await word.waitFor();assert.equal(await word.inputValue(),'');
+ await word.fill('холодные звонки');await page.getByRole('button',{name:'Очистить стоп-фразу'}).click();assert.equal(await word.inputValue(),'');
+ await word.fill('холодные звонки');await page.screenshot({path:'test-results/vacancy-exclusion-popover.png'});
+ await page.getByRole('button',{name:'Добавить и пропустить',exact:true}).click();
+ await page.waitForFunction(async()=>{const r=await fetch('/api/settings/exclusions');return (await r.json()).words.includes('холодные звонки')});
+ await firstRow.click({button:'right'});await page.getByRole('menuitem',{name:'Не интересует…',exact:true}).click();
+ await page.getByRole('button',{name:'Удалить стоп-фразу холодные звонки',exact:true}).click();
+ await page.waitForFunction(async()=>{const r=await fetch('/api/settings/exclusions');return (await r.json()).words.length===0});
+ await page.keyboard.press('Escape');
+ await page.goto(base+'/inbox',{waitUntil:'networkidle'});
+ await page.getByRole('heading',{name:'Ответы и чаты',exact:true}).waitFor();
+ assert.equal(await page.getByText('Чужое сообщение',{exact:true}).count(),0);
+ assert.equal(await page.locator('.conversation-card').count(),3);
+ await page.getByText('Приглашаем вас на собеседование',{exact:true}).first().waitFor();
+ await page.screenshot({path:'test-results/inbox-desktop.png',fullPage:true});
+ await choose(page.getByLabel('Тип ответа'),'negative');await page.getByRole('button',{name:'Показать',exact:true}).click();
+ await page.waitForURL(u=>u.searchParams.get('outcome')==='negative');assert.equal(await page.locator('.conversation-card').count(),1);
+ await page.getByText('К сожалению, мы не готовы предложить работу',{exact:true}).first().waitFor();
+ await choose(page.getByLabel('Тип ответа'),'all');await choose(page.getByLabel('Резюме в ответах'),'profile');await page.getByRole('button',{name:'Показать',exact:true}).click();
+ await page.waitForURL(u=>u.searchParams.get('scope')==='profile');assert.equal(await page.locator('.conversation-card').count(),2);
+ const sync=[];await page.route('**/api/inbox',async route=>{if(route.request().method()==='POST'){sync.push(route.request().postDataJSON());await route.fulfill({json:{state:{running:false,mode:'idle',message:'Тест синхронизации',processed:3,target:3}}})}else await route.continue()});
+ await page.getByRole('button',{name:'Обновить из HH',exact:true}).click();assert.equal(sync[0].profileId,1);
+ for(const pathname of ['/','/vacancies','/settings','/auto-apply','/inbox']) {
+  await page.setViewportSize({width:390,height:844});await page.goto(base+pathname);
+  const size=await page.evaluate(()=>({width:innerWidth,content:document.documentElement.scrollWidth}));assert.ok(size.content<=size.width,pathname+' overflow '+JSON.stringify(size));
+ }
+ await page.screenshot({path:'test-results/inbox-mobile.png',fullPage:true});
+ assert.deepEqual(errors,[]);console.log('OK Radix keyboard/select, editable right-click stop phrase and removal, scoped inbox filters/messages, private account separation, sync payload and all five mobile layouts.');
+ console.log('Only synthetic fixture data was changed; no messages or applications were sent.');
+} finally {await browser.close()}

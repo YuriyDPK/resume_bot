@@ -1,20 +1,21 @@
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
   provider = "sqlite"
-  url      = env("DATABASE_URL")
 }
 
 model Vacancy {
+  profileId     Int           @default(1)
   id            Int           @id @default(autoincrement())
   externalId    String?
   title         String
   company       String
   salary        String?
   city          String?
-  url           String        @unique
+  url           String
   description   String?
   matchScore    Int           @default(0)
   status        String        @default("found")
@@ -27,13 +28,18 @@ model Vacancy {
   @@index([matchScore])
   @@index([createdAt])
   @@index([searchBatchId])
+  @@unique([profileId, url])
+  @@index([profileId, status])
 }
 
 model SeenVacancy {
+  profileId   Int      @default(1)
   id          Int      @id @default(autoincrement())
-  url         String   @unique
+  url         String
   externalId  String?
   firstSeenAt DateTime @default(now())
+
+  @@unique([profileId, url])
 }
 
 model Application {
@@ -52,16 +58,20 @@ model Application {
 }
 
 model Setting {
+  hhAccountId          String?
+  resumeVerifiedAt     DateTime?
+  name                 String   @default("Основное резюме")
   id                   Int      @id @default(1)
-  city                 String   @default("Москва")
+  city                 String   @default("")
   minSalary            Int?
   coverLetterTemplate  String   @default("Здравствуйте! Заинтересовала ваша вакансия. Буду рад обсудить, чем мой опыт может быть полезен команде.")
   resumeText           String   @default("")
   resumeUrl            String?
   excludedWords        String   @default("")
+  browserHeadless      Boolean  @default(true)
   dailyLimit           Int      @default(5)
   searchLimit          Int      @default(50)
-  searchAllRussia      Boolean  @default(false)
+  searchAllRussia      Boolean  @default(true)
   remoteOnly           Boolean  @default(false)
   activeSearchBatchId  String?
   searchDelayMinSeconds Int     @default(1)
@@ -73,20 +83,52 @@ model Setting {
 }
 
 model SearchKeyword {
+  profileId Int      @default(1)
   id        Int      @id @default(autoincrement())
-  value     String   @unique
+  value     String
   enabled   Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@unique([profileId, value])
 }
 
 model Log {
+  profileId Int      @default(1)
   id        Int      @id @default(autoincrement())
   level     String   @default("info")
   message   String
   meta      String?
   createdAt DateTime @default(now())
 
+  @@index([profileId, createdAt])
   @@index([level])
   @@index([createdAt])
+}
+
+model AppState {
+  id              Int @id @default(1)
+  activeProfileId Int @default(1)
+}
+
+model Conversation {
+  id             Int      @id @default(autoincrement())
+  accountId      String
+  externalId     String
+  vacancyUrl     String?
+  vacancyTitle   String
+  company        String
+  resumeId       String?
+  outcome        String   @default("neutral")
+  statusLabel    String   @default("")
+  unread         Boolean  @default(false)
+  lastMessage    String   @default("")
+  messagesJson   String   @default("[]")
+  hhUrl          String
+  lastMessageAt  DateTime?
+  syncedAt       DateTime @default(now())
+
+  @@unique([accountId, externalId])
+  @@index([accountId, outcome])
+  @@index([accountId, lastMessageAt])
 }

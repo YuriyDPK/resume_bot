@@ -1,23 +1,17 @@
+import { profileMatches, staleProfileMessage } from "@/lib/profiles";
 import { NextResponse } from "next/server";
 import { hhRunner } from "@/lib/hh/runner";
+import { normalizeHHResumeUrl } from "@/lib/hh/resume-url";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function isHHResumeUrl(value: string) {
-  try {
-    const url = new URL(value);
-    return /(^|\.)hh\.ru$/.test(url.hostname) && url.pathname.includes("/resume/");
-  } catch {
-    return false;
-  }
-}
-
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
-  const resumeUrl = String(body.resumeUrl ?? "").trim();
+  if (!await profileMatches(body?.profileId)) return NextResponse.json({ error: staleProfileMessage }, { status: 409 });
+  const resumeUrl = normalizeHHResumeUrl(body?.resumeUrl);
 
-  if (!isHHResumeUrl(resumeUrl)) {
+  if (!resumeUrl) {
     return NextResponse.json({ error: "Укажите корректную ссылку на резюме HH" }, { status: 400 });
   }
 

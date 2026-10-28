@@ -3,7 +3,12 @@ node_modules
 .env
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
 hh-auth.json
+hh-auth.account.json
+hh-auth.account.json.tmp
+hh-auth.account.json.*.tmp
 playwright-report
 test-results
 npm-debug.log*
@@ -11,3 +16,7 @@ yarn-debug.log*
 yarn-error.log*
 
 .tools
+.DS_Store
+*.tsbuildinfo
+src/generated/
+prisma/backups/

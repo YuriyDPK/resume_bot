@@ -3,13 +3,16 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bot, BriefcaseBusiness, LayoutDashboard, Rocket, Settings } from "lucide-react";
+import { Bot, BriefcaseBusiness, LayoutDashboard, MessageSquare, Rocket, Settings } from "lucide-react";
+import { ResumeProfiles } from "@/components/resume-profiles";
+import { HHBrowserWorkspace } from "@/components/hh-browser-workspace";
 
 const navigation = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/vacancies", label: "Vacancies", icon: BriefcaseBusiness },
-  { href: "/auto-apply", label: "Auto Apply", icon: Rocket },
-  { href: "/settings", label: "Settings", icon: Settings }
+  { href: "/", label: "Обзор", icon: LayoutDashboard },
+  { href: "/vacancies", label: "Вакансии", icon: BriefcaseBusiness },
+  { href: "/inbox", label: "Ответы", icon: MessageSquare },
+  { href: "/auto-apply", label: "Автоотклики", icon: Rocket },
+  { href: "/settings", label: "Настройки", icon: Settings }
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -24,10 +27,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           </span>
           <span>
             <strong>HH Apply</strong>
-            <small>Job bot MVP</small>
+            <small>Ваш помощник в поиске</small>
           </span>
         </Link>
 
+        <ResumeProfiles />
         <nav className="nav-list" aria-label="Основная навигация">
           {navigation.map((item) => {
             const Icon = item.icon;
@@ -43,6 +47,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       <main className="main-shell">{children}</main>
+      <HHBrowserWorkspace />
     </div>
   );
 }

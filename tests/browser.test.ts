@@ -4,6 +4,7 @@ import type { Page } from "playwright";
 import type { Vacancy } from "@/generated/prisma/client";
 import { HHPlaywrightService } from "@/lib/hh/playwright";
 import { readHHProfile } from "@/lib/hh/account";
+import { writeLog } from "@/lib/log";
 
 vi.mock("@/lib/log", () => ({ writeLog: vi.fn() }));
 
@@ -61,6 +62,7 @@ describe("HH browser flows against local fixtures (no HH requests)", () => {
   let visited: string[];
 
   beforeEach(async () => {
+    vi.clearAllMocks();
     await mkdir("test-results", { recursive: true });
     service = new HHPlaywrightService();
     page = await service.ensureBrowser();
@@ -408,6 +410,24 @@ describe("HH browser flows against local fixtures (no HH requests)", () => {
     const results = await service.searchVacancies({ keywords: ["Frontend"], maxResults: 1, excludedWords: { title: [], description: ["junior"] }, delayRange: { minSeconds: 0, maxSeconds: 0 } });
     expect(results.map((result) => result.url)).toEqual(["https://hh.ru/vacancy/456"]);
     expect(results[0].description).toBe("Разработка интерфейсов React");
+    expect(writeLog).toHaveBeenCalledWith("info", expect.stringContaining("описание: junior"), expect.objectContaining({ url: "https://hh.ru/vacancy/123", stage: "полное описание HH", matches: expect.objectContaining({ description: ["junior"] }) }));
+  });
+
+  it("logs distinct reasons for search rejections, including repeated cards", async () => {
+    await page.context().route("**/*", async (route) => {
+      const url = new URL(route.request().url());
+      if (url.hostname === "api.hh.ru") return route.fulfill({ json: { id: "113", name: "Россия", areas: [{ id: "1", name: "Москва" }] } });
+      let body = '<script>window.globalVars={hhid:"fixture-account"}</script><h1>Мои резюме</h1><main data-qa="resume"><a data-qa="mainmenu_applicantProfile">Профиль</a><a href="https://hh.ru/resume/test">Мой профиль</a></main>';
+      if (url.pathname === "/search/vacancy") {
+        const card = (id: number, title: string, city: string, description = "") => `<article data-qa="vacancy-serp__vacancy"><a data-qa="serp-item__title" href="https://hh.ru/vacancy/${id}">${title}</a><div data-qa="vacancy-serp__vacancy-address">${city}</div><div data-qa="vacancy-serp__vacancy_snippet_requirement">${description}</div></article>`;
+        body = card(101, "Известная", "Москва") + card(102, "В другом городе", "Казань") + card(103, "Менеджер", "Москва") + card(103, "Менеджер", "Москва") + card(104, "Директор", "Москва", "Вахта") + card(105, "Директор", "Москва") + card(106, "Директор", "Москва");
+      } else if (url.pathname.startsWith("/vacancy/")) body = vacancyHtml(url.pathname.endsWith("105") ? "Работа вахтой" : "Обычная работа");
+      await route.fulfill({ contentType: "text/html; charset=utf-8", body });
+    });
+    await service.searchVacancies({ keywords: ["Директор"], city: "Москва", maxResults: 1, excludedUrls: ["https://hh.ru/vacancy/101"], excludedWords: { title: ["менеджер"], description: ["вахта"] }, searchBatchId: "batch-1", delayRange: { minSeconds: 0, maxSeconds: 0 } });
+    for (const [id, reason] of [[101, "локальной истории"], [102, "город не входит"], [103, "название: менеджер"], [103, "карточка уже обработана"], [104, "описание: вахта"], [105, "описание: вахта"]] as const) {
+      expect(writeLog).toHaveBeenCalledWith("info", expect.stringContaining(reason), expect.objectContaining({ url: `https://hh.ru/vacancy/${id}`, keyword: "Директор", page: 1, searchBatchId: "batch-1" }));
+    }
   });
 
   it.each([false, true])("keeps the same form until explicit human confirmation and actual HH success (extra action: %s)", async (reconcile) => {

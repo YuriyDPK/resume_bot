@@ -7,6 +7,13 @@ import type { LogFilters, LogList } from "@/lib/log-query";
 
 const levels: Record<string, string> = { info: "Информация", warn: "Внимание", error: "Ошибка" };
 function params(filters: LogFilters) { return new URLSearchParams(Object.entries(filters).map(([key, value]) => [key, String(value)])); }
+function vacancyLink(meta: string | null) {
+  if (!meta) return null;
+  try {
+    const url = new URL(JSON.parse(meta).url);
+    return url.protocol === "https:" && ["hh.ru", "www.hh.ru"].includes(url.hostname) && /^\/vacancy\/\d+\/?$/.test(url.pathname) ? url.href : null;
+  } catch { return null; }
+}
 
 export function ActivityLog({ initialData }: { initialData: LogList }) {
   const [data, setData] = useState(initialData);
@@ -64,7 +71,7 @@ export function ActivityLog({ initialData }: { initialData: LogList }) {
     {message && <p className="notice-line" role="status">{message}</p>}
     <div className="activity-list">{data.logs.length ? data.logs.map((log) => <article className="activity-row" key={log.id}>
       <SelectionCheckbox label={`Выбрать лог ${log.id}`} checked={chosen.includes(log.id)} onChange={(checked) => setSelected((current) => checked ? [...current, log.id] : current.filter((id) => id !== log.id))} />
-      <span className={"status-pill " + log.level}>{levels[log.level] ?? log.level}</span><div className="activity-message"><span>{log.message}</span>{log.meta && <details><summary>Подробности</summary><pre>{log.meta}</pre></details>}</div>
+      <span className={"status-pill " + log.level}>{levels[log.level] ?? log.level}</span><div className="activity-message"><span>{log.message}</span>{vacancyLink(log.meta) && <div><a href={vacancyLink(log.meta)!} target="_blank" rel="noreferrer">Открыть вакансию HH</a></div>}{log.meta && <details><summary>Подробности</summary><pre>{log.meta}</pre></details>}</div>
       <time dateTime={log.createdAt}>{new Date(log.createdAt).toLocaleString("ru-RU", { timeZone: "Europe/Moscow", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })}</time>
     </article>) : <p className="empty-state">Событий по выбранным фильтрам нет.</p>}</div>
     <div className="pagination"><span>Страница {data.page} из {data.pages}</span><button className="icon-button" aria-label="Предыдущая страница логов" disabled={data.page <= 1} onClick={() => page(data.page - 1)}><ChevronLeft size={16} /></button><button className="icon-button" aria-label="Следующая страница логов" disabled={data.page >= data.pages} onClick={() => page(data.page + 1)}><ChevronRight size={16} /></button></div>

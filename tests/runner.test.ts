@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { ensureSettings, saveImportedResume } from "@/lib/settings";
 import type { Page } from "playwright";
 import * as account from "@/lib/hh/account";
+import { writeLog } from "@/lib/log";
 
 vi.mock("@/lib/log", () => ({ writeLog: vi.fn() }));
 vi.mock("@/lib/settings", () => ({ ensureSettings: vi.fn(), saveImportedResume: vi.fn() }));
@@ -80,6 +81,13 @@ describe("application orchestration", () => {
     expect(prisma.vacancy.update).toHaveBeenCalledWith({ where: { id: 1 }, data: { status: "skipped" } });
     expect(prisma.application.create).not.toHaveBeenCalled();
     expect(state.processed).toBe(0);
+    expect(writeLog).toHaveBeenCalledWith("info", expect.stringContaining("описание: разработка"), expect.objectContaining({ url: vacancy.url, matches: expect.objectContaining({ description: ["разработка"] }) }));
+  });
+
+  it("explains when a search result does not match any configured query", async () => {
+    const result = await runner["saveVacancies"]([vacancy], { keywords: ["директор"], excludedWords: { title: [], description: [] }, searchBatchId: "search-test" });
+    expect(result).toBe(0);
+    expect(writeLog).toHaveBeenCalledWith("info", expect.stringContaining("ни один поисковый запрос не совпал"), expect.objectContaining({ url: vacancy.url, keywords: ["директор"], searchBatchId: "search-test" }));
   });
 
   it("marks fresh description exclusions skipped rather than failed", async () => {

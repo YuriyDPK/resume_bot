@@ -36,10 +36,24 @@ function matchesInFields(fields: (string | null | undefined)[], excludedWords: s
   });
 }
 
+export function findExcludedWordsByField(vacancy: FilterableVacancy, excludedWords: ExclusionLists | string[]) {
+  // The legacy array interface checks every field; scoped lists check only their field.
+  const titleWords = Array.isArray(excludedWords) ? excludedWords : excludedWords.title;
+  const descriptionWords = Array.isArray(excludedWords) ? excludedWords : excludedWords.description;
+  return {
+    title: matchesInFields([vacancy.title], titleWords),
+    description: matchesInFields([vacancy.description], descriptionWords),
+    other: Array.isArray(excludedWords) ? matchesInFields([vacancy.company, vacancy.city, vacancy.salary], excludedWords) : []
+  };
+}
+
+export function formatExcludedMatches(matches: ReturnType<typeof findExcludedWordsByField>) {
+  return [matches.title.length ? "название: " + matches.title.join(", ") : "", matches.description.length ? "описание: " + matches.description.join(", ") : "", matches.other.length ? "другие поля: " + matches.other.join(", ") : ""].filter(Boolean).join("; ");
+}
+
 export function findExcludedWords(vacancy: FilterableVacancy, excludedWords: ExclusionLists | string[]) {
-  // An array retains the old all-fields behavior for callers using the legacy interface.
-  if (Array.isArray(excludedWords)) return matchesInFields([vacancy.title, vacancy.company, vacancy.description, vacancy.city, vacancy.salary], excludedWords);
-  return [...matchesInFields([vacancy.title], excludedWords.title), ...matchesInFields([vacancy.description], excludedWords.description)];
+  const matches = findExcludedWordsByField(vacancy, excludedWords);
+  return Array.from(new Set([...matches.title, ...matches.description, ...matches.other]));
 }
 
 export function vacancyHasExcludedWords(vacancy: FilterableVacancy, excludedWords: ExclusionLists | string[]) {

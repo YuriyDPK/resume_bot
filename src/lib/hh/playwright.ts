@@ -5,7 +5,7 @@ import { writeLog } from "@/lib/log";
 
 import { HHBrowserSession } from "@/lib/hh/browser-session";
 import { HHAutomationError, type ApplyOptions, type ApplyToVacancyResult, type DelayRange, type ScrapedVacancy, type SearchPageProgress, type StopSignal } from "@/lib/hh/types";
-import { findExcludedWords, type ExclusionLists } from "@/lib/vacancy-filter";
+import { findExcludedWordsByField, formatExcludedMatches, type ExclusionLists } from "@/lib/vacancy-filter";
 import { rankResumes } from "@/lib/hh/resume-selection";
 import type { ResumeSource } from "@/lib/resume-parser";
 import { readOwnResumes, resumeIdFromUrl } from "@/lib/hh/ownership";
@@ -121,6 +121,7 @@ export class HHPlaywrightService extends HHBrowserSession {
     maxResults: number;
     excludedUrls?: string[];
     excludedWords?: ExclusionLists | string[];
+    searchBatchId?: string;
     stopRequested?: StopSignal;
     delayRange?: DelayRange;
     onVacancy?: (vacancy: ScrapedVacancy) => Promise<boolean | void>;
@@ -128,7 +129,8 @@ export class HHPlaywrightService extends HHBrowserSession {
   }) {
     const page = await this.ensureAuthorized(params.stopRequested);
     const results = new Map<string, ScrapedVacancy>();
-    const excludedUrls = new Set((params.excludedUrls ?? []).map(normalizeUrl).filter(Boolean));
+    const previouslyKnownUrls = new Set((params.excludedUrls ?? []).map(normalizeUrl).filter(Boolean));
+    const excludedUrls = new Set(previouslyKnownUrls);
     const exhaustedKeywords = new Set<string>();
     const emptyPagesByKeyword = new Map<string, number>();
     const itemsPerPage = 20;
@@ -137,6 +139,8 @@ export class HHPlaywrightService extends HHBrowserSession {
     const cities = splitCities(params.city);
     const areaIds = params.allRussia ? ["113"] : await this.resolveAreaIds(page, cities);
     const searchDelayRange = params.delayRange ?? { minSeconds: 1, maxSeconds: 3 };
+
+    await writeLog("info", "Параметры поиска HH", { searchBatchId: params.searchBatchId, cities, areaIds, minSalary: params.minSalary, remoteOnly: params.remoteOnly, searchLimit: params.maxResults, maxPages, maxEmptyPagesPerKeyword });
 
     if (!params.allRussia && cities.length > 0 && areaIds.length === 0) {
       await writeLog("warn", "Не удалось определить коды городов HH; применяю фильтр по названию в результатах", { cities });
@@ -156,7 +160,7 @@ export class HHPlaywrightService extends HHBrowserSession {
         for (const areaId of areaIds) url.searchParams.append("area", areaId);
         if (params.remoteOnly) url.searchParams.set("schedule", "remote");
 
-        await writeLog("info", "Ищу новые вакансии на HH", { keyword, page: pageNumber + 1 });
+        await writeLog("info", "Ищу новые вакансии на HH", { keyword, page: pageNumber + 1, searchBatchId: params.searchBatchId });
         await this.navigate(page, url.toString(), params.stopRequested);
         await page.waitForTimeout(2500);
 
@@ -229,20 +233,32 @@ export class HHPlaywrightService extends HHBrowserSession {
           skippedRejected: 0
         };
 
-        if (scraped.length === 0) exhaustedKeywords.add(keyword);
+        const logSkipped = async (reason: string, item: { title: string; url: string }, details: Record<string, unknown> = {}, level: "info" | "warn" = "info") => {
+          await writeLog(level, `Вакансия «${item.title || "Без названия"}» пропущена: ${reason}`, {
+            title: item.title, url: normalizeUrl(item.url) || item.url, keyword, page: pageNumber + 1, searchBatchId: params.searchBatchId, ...details
+          });
+        };
+
+        if (scraped.length === 0) {
+          exhaustedKeywords.add(keyword);
+          await writeLog("info", "Поиск по запросу остановлен: HH не показал карточек", { keyword, page: pageNumber + 1, searchBatchId: params.searchBatchId });
+        }
 
         for (const item of scraped) {
           const normalizedUrl = normalizeUrl(item.url);
           if (!normalizedUrl || !isVacancyUrl(normalizedUrl)) {
             progress.skippedInvalid += 1;
+            await logSkipped("некорректная ссылка", item);
             continue;
           }
           if (excludedUrls.has(normalizedUrl)) {
             progress.skippedKnown += 1;
+            await logSkipped(previouslyKnownUrls.has(normalizedUrl) ? "уже есть в локальной истории этого резюме" : "карточка уже обработана в текущем поиске", item);
             continue;
           }
           if (!params.allRussia && !cityMatches(item.city, params.city)) {
             progress.skippedCity += 1;
+            await logSkipped("город не входит в настройки", item, { vacancyCity: item.city, expectedCities: cities });
             continue;
           }
 
@@ -257,20 +273,24 @@ export class HHPlaywrightService extends HHBrowserSession {
           };
 
           excludedUrls.add(normalizedUrl);
-          if (findExcludedWords(vacancy, params.excludedWords ?? []).length > 0) {
+          const cardMatches = findExcludedWordsByField(vacancy, params.excludedWords ?? []);
+          if (formatExcludedMatches(cardMatches)) {
             progress.skippedRejected += 1;
+            await logSkipped("стоп-слова (" + formatExcludedMatches(cardMatches) + ")", vacancy, { matches: cardMatches, stage: "карточка HH" });
             continue;
           }
           try {
             vacancy = await this.readVacancyDetails(vacancy, params.stopRequested);
           } catch (error) {
             if (!(error instanceof HHAutomationError) || !["browser", "archived", "unavailable"].includes(error.code)) throw error;
-            await writeLog(error.code === "browser" ? "warn" : "info", error.code === "archived" ? "Вакансия в архиве, пропускаю" : error.code === "unavailable" ? "Вакансия недоступна, пропускаю" : "Не удалось прочитать полное описание вакансии", { url: vacancy.url, message: error.message });
+            await logSkipped(error.code === "archived" ? "вакансия в архиве" : error.code === "unavailable" ? "вакансия недоступна" : "не удалось прочитать полное описание", vacancy, { error: error.message }, error.code === "browser" ? "warn" : "info");
             progress.skippedRejected += 1;
             continue;
           }
-          if (findExcludedWords(vacancy, params.excludedWords ?? []).length > 0) {
+          const fullMatches = findExcludedWordsByField(vacancy, params.excludedWords ?? []);
+          if (formatExcludedMatches(fullMatches)) {
             progress.skippedRejected += 1;
+            await logSkipped("стоп-слова (" + formatExcludedMatches(fullMatches) + ")", vacancy, { matches: fullMatches, stage: "полное описание HH" });
             continue;
           }
           const accepted = (await params.onVacancy?.(vacancy)) ?? true;
@@ -292,8 +312,10 @@ export class HHPlaywrightService extends HHBrowserSession {
           emptyPagesByKeyword.set(keyword, emptyPages);
           if (emptyPages >= maxEmptyPagesPerKeyword) {
             exhaustedKeywords.add(keyword);
+            await writeLog("info", "Поиск по запросу остановлен: подряд нет новых подходящих вакансий", { keyword, page: pageNumber + 1, emptyPages, searchBatchId: params.searchBatchId });
           }
           await writeLog("info", "Страница HH без новых вакансий", {
+            searchBatchId: params.searchBatchId,
             keyword,
             page: pageNumber + 1,
             scraped: progress.scraped,
@@ -741,15 +763,15 @@ export class HHPlaywrightService extends HHBrowserSession {
     stopRequested?: StopSignal,
     options: ApplyOptions = { excludedWords: [] }
   ): Promise<ApplyToVacancyResult> {
-    const savedMatches = findExcludedWords(vacancy, options.excludedWords);
-    if (savedMatches.length) throw new HHAutomationError("excluded", "Запрещённые слова: " + savedMatches.join(", "));
+    const savedMatches = formatExcludedMatches(findExcludedWordsByField(vacancy, options.excludedWords));
+    if (savedMatches) throw new HHAutomationError("excluded", "Запрещённые слова: " + savedMatches);
     const page = await this.ensureAuthorized(stopRequested);
     await this.assertAccountOwner(page, options.expectedAccountId);
     this.assertNotStopped(stopRequested);
     const freshVacancy = await this.readVacancyOnPage(page, vacancy, stopRequested, true);
     if (freshVacancy.alreadyApplied) return { alreadyApplied: true, coverLetterDelivery: "none" };
-    const matches = findExcludedWords(freshVacancy, options.excludedWords);
-    if (matches.length) throw new HHAutomationError("excluded", "Запрещённые слова в вакансии: " + matches.join(", "));
+    const matches = formatExcludedMatches(findExcludedWordsByField(freshVacancy, options.excludedWords));
+    if (matches) throw new HHAutomationError("excluded", "Запрещённые слова в вакансии: " + matches);
 
     if (await this.responseWasSent(page)) return { alreadyApplied: true, coverLetterDelivery: "none" };
 

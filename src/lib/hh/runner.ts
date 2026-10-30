@@ -4,7 +4,7 @@ import { writeLog } from "@/lib/log";
 import { buildSearchQueries, calculateMatchScore, isRelevantVacancy, parseExcludedWords, vacancyHasExcludedWords } from "@/lib/matching";
 import { prisma } from "@/lib/prisma";
 import { ensureSettings, saveImportedResume } from "@/lib/settings";
-import { findExcludedWords, type ExclusionLists } from "@/lib/vacancy-filter";
+import { findExcludedWordsByField, formatExcludedMatches, type ExclusionLists } from "@/lib/vacancy-filter";
 import type { CaptchaInput } from "@/lib/hh/captcha";
 import { parseResumeSettings } from "@/lib/resume-parser";
 import type { AutoApplyOptions } from "@/lib/hh/types";
@@ -267,6 +267,7 @@ export class HHRunner {
       };
 
       await writeLog("info", "Поиск запущен", {
+        searchBatchId,
         keywords,
         city,
         minSalary: settings.minSalary,
@@ -286,6 +287,7 @@ export class HHRunner {
         maxResults: settings.searchLimit,
         excludedUrls: knownUrls,
         excludedWords,
+        searchBatchId,
         delayRange: {
           minSeconds: settings.searchDelayMinSeconds ?? 1,
           maxSeconds: settings.searchDelayMaxSeconds ?? 3
@@ -332,7 +334,7 @@ export class HHRunner {
       await prisma.setting.update({ where: { id: this.profileId! }, data: { activeSearchBatchId: searchBatchId } });
 
       this.state.processed = saved;
-      await writeLog("info", "Поиск завершен", { saved, skippedKnown: knownUrls.length, searchStats, searchBatchId });
+      await writeLog("info", "Поиск завершен", { saved, knownVacanciesAtStart: knownUrls.length, searchStats, searchBatchId });
       if (saved === 0) {
         await this.finish(
           "Поиск завершен. Найдено новых вакансий: 0. HH-карточек проверено: " +
@@ -385,12 +387,13 @@ export class HHRunner {
       }
 
       if (vacancyHasExcludedWords(vacancy, settings.excludedWords)) {
-        await writeLog("info", "Вакансия пропущена по стоп-словам", { title: vacancy.title, url: vacancy.url });
+        const matches = findExcludedWordsByField(vacancy, settings.excludedWords);
+        await writeLog("info", `Вакансия «${vacancy.title}» пропущена: стоп-слова (${formatExcludedMatches(matches)})`, { title: vacancy.title, url: vacancy.url, matches, searchBatchId: settings.searchBatchId });
         continue;
       }
 
       if (!isRelevantVacancy(vacancy, settings)) {
-        await writeLog("info", "Вакансия пропущена: не по специальности", { title: vacancy.title, url: vacancy.url });
+        await writeLog("info", `Вакансия «${vacancy.title}» пропущена: ни один поисковый запрос не совпал с названием или описанием`, { title: vacancy.title, url: vacancy.url, keywords: buildSearchQueries(settings.keywords, settings.resumeText), searchBatchId: settings.searchBatchId });
         continue;
       }
 
@@ -420,6 +423,8 @@ export class HHRunner {
           })
         ]);
         saved += 1;
+      } else {
+        await writeLog("info", `Вакансия «${vacancy.title}» пропущена: уже сохранена в этом резюме`, { title: vacancy.title, url: vacancy.url, searchBatchId: settings.searchBatchId });
       }
     }
 
@@ -538,14 +543,14 @@ export class HHRunner {
     const alreadySent = await prisma.vacancy.findFirst({ where: { url: vacancy.url, status: "applied", profileId: { not: settings.id } }, select: { id: true } });
     if (alreadySent) {
       await prisma.vacancy.update({ where: { id }, data: { status: "skipped" } });
-      await writeLog("info", "Вакансия пропущена: отклик уже отправлен из другого профиля", { vacancyId: id }, settings.id);
+      await writeLog("info", `Вакансия «${vacancy.title}» пропущена: отклик уже отправлен из другого профиля`, { vacancyId: id, title: vacancy.title, url: vacancy.url }, settings.id);
       return false;
     }
     const excludedWords = { title: parseExcludedWords(settings.excludedWords), description: parseExcludedWords(settings.excludedDescriptionWords) };
-    const matches = findExcludedWords(vacancy, excludedWords);
-    if (matches.length > 0) {
+    const matches = findExcludedWordsByField(vacancy, excludedWords);
+    if (formatExcludedMatches(matches)) {
       await prisma.vacancy.update({ where: { id }, data: { status: "skipped" } });
-      await writeLog("info", "Отклик заблокирован стоп-словами", { vacancyId: id, matches });
+      await writeLog("info", `Отклик на «${vacancy.title}» заблокирован: стоп-слова (${formatExcludedMatches(matches)})`, { vacancyId: id, title: vacancy.title, url: vacancy.url, matches });
       return false;
     }
     const appliedToday = await prisma.application.count({
@@ -589,7 +594,7 @@ export class HHRunner {
       const message = errorMessage(error);
       if (error instanceof HHAutomationError && ["excluded", "archived", "unavailable", "requirements"].includes(error.code)) {
         await prisma.vacancy.update({ where: { id }, data: { status: "skipped" } });
-        await writeLog("info", error.code === "requirements" ? "Вакансия пропущена: дополнительные требования" : error.code === "archived" ? "Вакансия в архиве, пропускаю" : error.code === "unavailable" ? "Вакансия недоступна, пропускаю" : "Отклик заблокирован стоп-словами", { vacancyId: id, message });
+        await writeLog("info", `Вакансия «${vacancy.title}» пропущена: ` + (error.code === "requirements" ? "дополнительные требования" : error.code === "archived" ? "вакансия в архиве" : error.code === "unavailable" ? "вакансия недоступна" : message), { vacancyId: id, title: vacancy.title, url: vacancy.url, message });
         return false;
       }
       if (error instanceof HHAutomationError && error.code === "stopped") {

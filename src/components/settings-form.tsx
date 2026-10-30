@@ -1,29 +1,13 @@
 "use client";
 
-import { type FormEvent, useEffect, useRef, useState, useTransition } from "react";
+import { type ChangeEvent, type FormEvent, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Clock3, Download, FileText, MessageSquare, Save, ScanText, Search } from "lucide-react";
+import { Clock3, Download, FileText, MessageSquare, Save, ScanText, Search, Upload } from "lucide-react";
 import { ResumeMergeDialog } from "@/components/resume-merge-dialog";
 import { mergeResumeFields, resumeConflicts, type ParsedResume, type ResumeMergeMode } from "@/lib/resume-parser";
+import { exportSettings, importSettings, type TransferSettings } from "@/lib/settings-transfer";
 
-export type SettingsFormValue = {
-  keywords: string;
-  city: string;
-  minSalary: number | "";
-  coverLetterTemplate: string;
-  resumeText: string;
-  resumeUrl: string;
-  excludedWords: string;
-  excludedDescriptionWords: string;
-  dailyLimit: number;
-  searchLimit: number;
-  searchAllRussia: boolean;
-  remoteOnly: boolean;
-  searchDelayMinSeconds: number;
-  searchDelayMaxSeconds: number;
-  applyDelayMinSeconds: number;
-  applyDelayMaxSeconds: number;
-};
+export type SettingsFormValue = TransferSettings;
 
 export function SettingsForm({ initialValue, profileId }: { initialValue: SettingsFormValue; profileId: number }) {
   const router = useRouter();
@@ -36,11 +20,38 @@ export function SettingsForm({ initialValue, profileId }: { initialValue: Settin
   const [proposal, setProposal] = useState<{ parsed: ParsedResume; url: string } | null>(null);
   const [parseNotes, setParseNotes] = useState<string[]>([]);
   const latestValue = useRef(value);
+  const settingsFile = useRef<HTMLInputElement>(null);
   useEffect(() => { latestValue.current = value; }, [value]);
 
   function update<K extends keyof SettingsFormValue>(key: K, nextValue: SettingsFormValue[K]) {
     setDirty(true);
     setValue((current) => ({ ...current, [key]: nextValue }));
+  }
+
+  function downloadSettings() {
+    const blob = new Blob([exportSettings(value)], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "hh-bot-settings.json";
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setMessage("Настройки текущего резюме экспортированы.");
+  }
+
+  async function loadSettings(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      if (file.size > 2_000_000) throw new Error("Файл настроек слишком большой (максимум 2 МБ).");
+      const imported = importSettings(await file.text());
+      setValue(imported);
+      setDirty(true);
+      setMessage("Настройки загружены в форму. Проверьте их и нажмите «Сохранить».");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Не удалось загрузить настройки.");
+    }
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -124,6 +135,14 @@ export function SettingsForm({ initialValue, profileId }: { initialValue: Settin
 
   return (
     <form data-dirty={dirty} className="settings-form" onSubmit={submit}>
+      <section className="panel settings-section"><header className="settings-section-heading"><span className="settings-section-icon"><Download size={19} /></span><div><h2>Импорт и экспорт настроек</h2><p>Перенос всех полей настроек текущего резюме в JSON-файле.</p></div></header><div className="settings-section-body">
+        <div className="form-actions full-span compact-actions">
+          <button className="button secondary" type="button" disabled={isPending || isImporting || isParsing} onClick={() => settingsFile.current?.click()}><Upload size={17} />Импорт настроек</button>
+          <button className="button secondary" type="button" onClick={downloadSettings}><Download size={17} />Экспорт настроек</button>
+          <input ref={settingsFile} type="file" accept=".json,application/json" hidden onChange={loadSettings} />
+          <small className="muted-text">Экспортируются значения в форме, включая несохранённые. Импорт заменяет поля формы и сохраняется после нажатия «Сохранить»; файл содержит текст резюме и письма.</small>
+        </div>
+      </div></section>
       <section className="panel settings-section" id="resume-profile"><header className="settings-section-heading"><span className="settings-section-icon"><FileText size={19} /></span><div><h2>Резюме из HH</h2><p>Загрузите профиль или заполните настройки из резюме по ссылке.</p></div><span className="section-number">01</span></header><div className="settings-section-body">
       <label className="field-group full-span">
         <span>Ссылка на резюме HH</span>

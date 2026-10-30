@@ -10,6 +10,7 @@ import { rankResumes } from "@/lib/hh/resume-selection";
 import type { ResumeSource } from "@/lib/resume-parser";
 import { readOwnResumes, resumeIdFromUrl } from "@/lib/hh/ownership";
 import { scrapeInbox, type HHConversation } from "@/lib/hh/inbox-scraper";
+import { normalizeHHVacancyUrl } from "@/lib/hh/vacancy-url";
 export { HHAutomationError } from "@/lib/hh/types";
 export type { ScrapedVacancy } from "@/lib/hh/types";
 
@@ -17,7 +18,7 @@ function extractExternalId(url: string) {
   return url.match(/vacancy\/(\d+)/)?.[1];
 }
 
-function normalizeUrl(url: string | null | undefined) {
+function sanitizeUrl(url: string | null | undefined) {
   if (!url) return "";
   try {
     const parsed = new URL(url);
@@ -31,10 +32,6 @@ function normalizeUrl(url: string | null | undefined) {
 
 function normalizeForCompare(value: string | null | undefined) {
   return (value ?? "").toLowerCase().replace(/ё/g, "е").trim();
-}
-
-function isVacancyUrl(url: string) {
-  return /^https:\/\/(www\.)?hh\.ru\/vacancy\/\d+/.test(url);
 }
 
 function cityMatches(vacancyCity: string | null | undefined, expectedCity: string | null | undefined) {
@@ -129,7 +126,7 @@ export class HHPlaywrightService extends HHBrowserSession {
   }) {
     const page = await this.ensureAuthorized(params.stopRequested);
     const results = new Map<string, ScrapedVacancy>();
-    const previouslyKnownUrls = new Set((params.excludedUrls ?? []).map(normalizeUrl).filter(Boolean));
+    const previouslyKnownUrls = new Set((params.excludedUrls ?? []).map(normalizeHHVacancyUrl).filter((url): url is string => Boolean(url)));
     const excludedUrls = new Set(previouslyKnownUrls);
     const exhaustedKeywords = new Set<string>();
     const emptyPagesByKeyword = new Map<string, number>();
@@ -235,7 +232,7 @@ export class HHPlaywrightService extends HHBrowserSession {
 
         const logSkipped = async (reason: string, item: { title: string; url: string }, details: Record<string, unknown> = {}, level: "info" | "warn" = "info") => {
           await writeLog(level, `Вакансия «${item.title || "Без названия"}» пропущена: ${reason}`, {
-            title: item.title, url: normalizeUrl(item.url) || item.url, keyword, page: pageNumber + 1, searchBatchId: params.searchBatchId, ...details
+            title: item.title, url: normalizeHHVacancyUrl(item.url) || sanitizeUrl(item.url) || item.url, keyword, page: pageNumber + 1, searchBatchId: params.searchBatchId, ...details
           });
         };
 
@@ -245,8 +242,8 @@ export class HHPlaywrightService extends HHBrowserSession {
         }
 
         for (const item of scraped) {
-          const normalizedUrl = normalizeUrl(item.url);
-          if (!normalizedUrl || !isVacancyUrl(normalizedUrl)) {
+          const normalizedUrl = normalizeHHVacancyUrl(item.url);
+          if (!normalizedUrl) {
             progress.skippedInvalid += 1;
             await logSkipped("некорректная ссылка", item);
             continue;

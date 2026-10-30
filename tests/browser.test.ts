@@ -430,6 +430,19 @@ describe("HH browser flows against local fixtures (no HH requests)", () => {
     }
   });
 
+  it("accepts regional HH vacancy links and recognizes previously seen www links", async () => {
+    await page.context().route("**/*", async (route) => {
+      const url = new URL(route.request().url());
+      let body = '<script>window.globalVars={hhid:"fixture-account"}</script><h1>Мои резюме</h1><main data-qa="resume"><a data-qa="mainmenu_applicantProfile">Профиль</a><a href="https://hh.ru/resume/test">Мой профиль</a></main>';
+      if (url.pathname === "/search/vacancy") body = [123, 456].map((id) => `<article data-qa="vacancy-serp__vacancy"><a data-qa="serp-item__title" href="https://spb.hh.ru/vacancy/${id}?from=search">Frontend React</a></article>`).join("");
+      else if (url.pathname.startsWith("/vacancy/")) body = vacancyHtml("Разработка интерфейсов React");
+      await route.fulfill({ contentType: "text/html; charset=utf-8", body });
+    });
+    const results = await service.searchVacancies({ keywords: ["Frontend"], maxResults: 1, excludedUrls: ["https://www.hh.ru/vacancy/123"], delayRange: { minSeconds: 0, maxSeconds: 0 } });
+    expect(results.map((result) => result.url)).toEqual(["https://hh.ru/vacancy/456"]);
+    expect(writeLog).toHaveBeenCalledWith("info", expect.stringContaining("локальной истории"), expect.objectContaining({ url: "https://hh.ru/vacancy/123" }));
+  });
+
   it.each([false, true])("keeps the same form until explicit human confirmation and actual HH success (extra action: %s)", async (reconcile) => {
     let submits = 0;
     let vacancyViews = 0;

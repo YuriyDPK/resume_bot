@@ -84,6 +84,13 @@ describe("application orchestration", () => {
     expect(writeLog).toHaveBeenCalledWith("info", expect.stringContaining("описание: разработка"), expect.objectContaining({ url: vacancy.url, matches: expect.objectContaining({ description: ["разработка"] }) }));
   });
 
+  it("checks an already applied vacancy by HH ID across regional URL variants", async () => {
+    vi.mocked(prisma.vacancy.findFirst).mockResolvedValueOnce({ id: 2 } as Vacancy);
+    await runner.applyVacancy(1);
+    expect(prisma.vacancy.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ OR: [{ url: vacancy.url }, { externalId: "123" }], status: "applied" }) }));
+    expect(automation.applyToVacancy).not.toHaveBeenCalled();
+  });
+
   it("explains when a search result does not match any configured query", async () => {
     const result = await runner["saveVacancies"]([vacancy], { keywords: ["директор"], excludedWords: { title: [], description: [] }, searchBatchId: "search-test" });
     expect(result).toBe(0);

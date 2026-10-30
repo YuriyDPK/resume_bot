@@ -540,7 +540,7 @@ export class HHRunner {
     if (vacancy.status === "applied") throw new Error("На эту вакансию уже был отправлен отклик");
     if (this.state.stopRequested) throw new HHAutomationError("stopped", "Процесс остановлен пользователем");
 
-    const alreadySent = await prisma.vacancy.findFirst({ where: { url: vacancy.url, status: "applied", profileId: { not: settings.id } }, select: { id: true } });
+    const alreadySent = await prisma.vacancy.findFirst({ where: { OR: [{ url: vacancy.url }, ...(vacancy.externalId ? [{ externalId: vacancy.externalId }] : [])], status: "applied", profileId: { not: settings.id } }, select: { id: true } });
     if (alreadySent) {
       await prisma.vacancy.update({ where: { id }, data: { status: "skipped" } });
       await writeLog("info", `Вакансия «${vacancy.title}» пропущена: отклик уже отправлен из другого профиля`, { vacancyId: id, title: vacancy.title, url: vacancy.url }, settings.id);

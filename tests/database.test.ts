@@ -62,7 +62,7 @@ describe("Prisma upgrade and existing SQLite conventions", () => {
         for (const statement of sql.split(";").filter((part) => part.trim())) await legacy.$executeRawUnsafe(statement);
       }
       const timestamp = Date.UTC(2026, 9, 28, 9);
-      await legacy.$executeRaw`INSERT INTO Setting (id, resumeText, city, updatedAt) VALUES (1, 'Мой опыт', 'Казань', ${timestamp})`;
+      await legacy.$executeRaw`INSERT INTO Setting (id, resumeText, city, excludedWords, updatedAt) VALUES (1, 'Мой опыт', 'Казань', 'менеджер', ${timestamp})`;
       await legacy.$executeRaw`INSERT INTO Vacancy (id,title,company,url,status,updatedAt) VALUES (1,'Врач','Клиника','https://hh.ru/vacancy/123','applied',${timestamp})`;
       await legacy.$executeRaw`INSERT INTO Application (vacancyId,status,appliedAt,updatedAt) VALUES (1,'applied',${timestamp},${timestamp})`;
       await legacy.$executeRaw`INSERT INTO Log (message) VALUES ('Моя история')`;
@@ -70,7 +70,9 @@ describe("Prisma upgrade and existing SQLite conventions", () => {
       for (const statement of sql.split(";").filter((part) => part.trim())) await legacy.$executeRawUnsafe(statement);
       const inboxSql = await readFile("prisma/migrations/20261028150000_inbox_and_ownership/migration.sql", "utf8");
       for (const statement of inboxSql.split(";").filter((part) => part.trim())) await legacy.$executeRawUnsafe(statement);
-      expect(await legacy.setting.findUnique({ where: { id: 1 } })).toMatchObject({ resumeText: "Мой опыт", city: "Казань", name: "Основное резюме" });
+      const scopedSql = await readFile("prisma/migrations/20261030120000_scoped_exclusions/migration.sql", "utf8");
+      for (const statement of scopedSql.split(";").filter((part) => part.trim())) await legacy.$executeRawUnsafe(statement);
+      expect(await legacy.setting.findUnique({ where: { id: 1 } })).toMatchObject({ resumeText: "Мой опыт", city: "Казань", name: "Основное резюме", excludedWords: "менеджер", excludedDescriptionWords: "менеджер" });
       expect(await legacy.vacancy.findUnique({ where: { id: 1 } })).toMatchObject({ profileId: 1, status: "applied" });
       expect(await legacy.application.findFirst()).toMatchObject({ vacancyId: 1, status: "applied", appliedAt: new Date(timestamp) });
       expect(await legacy.log.findFirst()).toMatchObject({ profileId: 1, message: "Моя история" });

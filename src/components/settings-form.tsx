@@ -14,6 +14,7 @@ export type SettingsFormValue = {
   resumeText: string;
   resumeUrl: string;
   excludedWords: string;
+  excludedDescriptionWords: string;
   dailyLimit: number;
   searchLimit: number;
   searchAllRussia: boolean;
@@ -152,14 +153,20 @@ export function SettingsForm({ initialValue, profileId }: { initialValue: Settin
       </label>
 
       <label className="field-group full-span">
-        <span>Слова, которых не должно быть в вакансии</span>
+        <span>Стоп-слова в названии вакансии</span>
         <textarea
           value={value.excludedWords}
           onChange={(event) => update("excludedWords", event.target.value)}
           rows={3}
-          placeholder="Например: стажер, junior, холодные звонки"
+          placeholder="Например: стажёр, junior, менеджер"
         />
-        <small>Через запятую, точку с запятой или с новой строки. Проверяются название, компания и полное описание, включая формы русских слов. Запреты действуют и перед откликом.</small>
+        <small>Проверяется только название должности. Через запятую, точку с запятой или с новой строки. Учитываются формы русских слов.</small>
+      </label>
+
+      <label className="field-group full-span">
+        <span>Стоп-слова в описании вакансии</span>
+        <textarea value={value.excludedDescriptionWords} onChange={(event) => update("excludedDescriptionWords", event.target.value)} rows={3} placeholder="Например: холодные звонки, вахта" />
+        <small>Проверяется текст описания. Оба списка действуют при поиске и перед откликом. Ранее сохранённые стоп-слова перенесены в оба списка — при необходимости распределите их.</small>
       </label>
 
       <div className="field-group checkbox-group full-span">

@@ -5,7 +5,7 @@ import { writeLog } from "@/lib/log";
 
 import { HHBrowserSession } from "@/lib/hh/browser-session";
 import { HHAutomationError, type ApplyOptions, type ApplyToVacancyResult, type DelayRange, type ScrapedVacancy, type SearchPageProgress, type StopSignal } from "@/lib/hh/types";
-import { findExcludedWords } from "@/lib/vacancy-filter";
+import { findExcludedWords, type ExclusionLists } from "@/lib/vacancy-filter";
 import { rankResumes } from "@/lib/hh/resume-selection";
 import type { ResumeSource } from "@/lib/resume-parser";
 import { readOwnResumes, resumeIdFromUrl } from "@/lib/hh/ownership";
@@ -120,7 +120,7 @@ export class HHPlaywrightService extends HHBrowserSession {
     remoteOnly?: boolean;
     maxResults: number;
     excludedUrls?: string[];
-    excludedWords?: string[];
+    excludedWords?: ExclusionLists | string[];
     stopRequested?: StopSignal;
     delayRange?: DelayRange;
     onVacancy?: (vacancy: ScrapedVacancy) => Promise<boolean | void>;
@@ -749,7 +749,7 @@ export class HHPlaywrightService extends HHBrowserSession {
     const freshVacancy = await this.readVacancyOnPage(page, vacancy, stopRequested, true);
     if (freshVacancy.alreadyApplied) return { alreadyApplied: true, coverLetterDelivery: "none" };
     const matches = findExcludedWords(freshVacancy, options.excludedWords);
-    if (matches.length) throw new HHAutomationError("excluded", "Запрещённые слова в полном описании: " + matches.join(", "));
+    if (matches.length) throw new HHAutomationError("excluded", "Запрещённые слова в вакансии: " + matches.join(", "));
 
     if (await this.responseWasSent(page)) return { alreadyApplied: true, coverLetterDelivery: "none" };
 

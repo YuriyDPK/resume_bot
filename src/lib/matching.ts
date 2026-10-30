@@ -1,5 +1,5 @@
 import { normalizeText, queryMatchesText, searchTerms } from "@/lib/text";
-import { vacancyHasExcludedWords, type FilterableVacancy } from "@/lib/vacancy-filter";
+import { vacancyHasExcludedWords, type ExclusionLists, type FilterableVacancy } from "@/lib/vacancy-filter";
 export { normalizeText, parseExcludedWords, vacancyHasExcludedWords } from "@/lib/vacancy-filter";
 
 type MatchSettings = {
@@ -7,7 +7,7 @@ type MatchSettings = {
   minSalary?: number | null;
   resumeText?: string | null;
   keywords: string[];
-  excludedWords?: string[];
+  excludedWords?: ExclusionLists | string[];
 };
 
 function uniqueQueries(values: string[]) {

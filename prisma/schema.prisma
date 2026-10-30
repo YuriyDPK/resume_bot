@@ -68,6 +68,7 @@ model Setting {
   resumeText           String   @default("")
   resumeUrl            String?
   excludedWords        String   @default("")
+  excludedDescriptionWords String @default("")
   browserHeadless      Boolean  @default(true)
   dailyLimit           Int      @default(5)
   searchLimit          Int      @default(50)

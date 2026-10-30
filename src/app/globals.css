@@ -1110,6 +1110,7 @@ td { font-size: 12px; padding: 16px 12px; }
 .exclusion-popover p { font-size: 11px; line-height: 1.65; margin: 13px 0; }
 .exclusion-vacancy { padding: 9px 11px; background: #f5f6fa; border-radius: 7px; color: #768197; }
 .exclusion-popover form { display: grid; gap: 12px; }
+.exclusion-popover select { width: 100%; min-height: 40px; padding: 8px 11px; border: 1px solid var(--line); border-radius: 9px; background: white; color: var(--text); }
 .clearable-input { display: flex; align-items: center; gap: 4px; }
 .clearable-input input { min-width: 0; flex: 1; }
 .exclusion-current { margin-top: 18px; padding-top: 12px; border-top: 1px solid #edf0f5; }

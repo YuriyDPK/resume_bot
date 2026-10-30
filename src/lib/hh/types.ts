@@ -1,3 +1,5 @@
+import type { ExclusionLists } from "@/lib/vacancy-filter";
+
 export type StopSignal = () => boolean;
 export type DelayRange = { minSeconds: number; maxSeconds: number };
 
@@ -31,7 +33,7 @@ export type ApplyToVacancyResult = {
 };
 
 export type ApplyOptions = {
-  excludedWords: string[];
+  excludedWords: ExclusionLists | string[];
   preferredResumeUrl?: string | null;
   requirePreferredResume?: boolean;
   preferredResumeTitle?: string;

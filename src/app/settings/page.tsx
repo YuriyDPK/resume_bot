@@ -16,6 +16,7 @@ export default async function SettingsPage() {
     resumeText: settings.resumeText,
     resumeUrl: settings.resumeUrl ?? "",
     excludedWords: settings.excludedWords,
+    excludedDescriptionWords: settings.excludedDescriptionWords,
     dailyLimit: settings.dailyLimit,
     searchLimit: settings.searchLimit,
     searchAllRussia: settings.searchAllRussia,

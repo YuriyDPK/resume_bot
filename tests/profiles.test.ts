@@ -150,6 +150,15 @@ describe("isolated resume workspaces on real SQLite", () => {
     expect(await removed.json()).toEqual({ words: [] });
     expect((await exclusions(request("/api/settings/exclusions", { action: "add", word: "слово", profileId: 2 }))).status).toBe(409);
   });
+  it("keeps title and description stop-phrases separate across settings, quick edits and profile copies", async () => {
+    const saved = await settings(request("/api/settings", { profileId: 1, keywords: "Директор", excludedWords: "менеджер", excludedDescriptionWords: "холодные звонки" }, "PUT"));
+    expect(saved.status).toBe(200);
+    await exclusions(request("/api/settings/exclusions", { action: "add", word: "вахта", scope: "description", profileId: 1 }));
+    expect(await ensureSettings(1)).toMatchObject({ excludedWords: "менеджер", excludedDescriptionWords: "холодные звонки\nвахта" });
+    await exclusions(request("/api/settings/exclusions", { action: "remove", word: "вахта", scope: "description", profileId: 1 }));
+    const copy = await createProfile("Копия", null, true);
+    expect(await ensureSettings(copy.id)).toMatchObject({ excludedWords: "менеджер", excludedDescriptionWords: "холодные звонки" });
+  });
   it("rejects a foreign resume before creating a profile or changing the active one", async () => {
     vi.mocked(hhRunner.inspectOwnResume).mockRejectedValueOnce(new Error("Резюме не принадлежит текущему аккаунту"));
     expect((await profiles(request("/api/profiles", { action: "create", resumeUrl: "https://hh.ru/resume/foreign", profileId: 1 }))).status).toBe(409);

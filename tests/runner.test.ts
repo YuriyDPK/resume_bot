@@ -24,7 +24,7 @@ const vacancy: Vacancy = {
 
 const settings: Awaited<ReturnType<typeof ensureSettings>> = {
   hhAccountId: null, resumeVerifiedAt: null, name: "Основное резюме", id: 1, city: "Москва", minSalary: null, coverLetterTemplate: "Здравствуйте", resumeText: "React", resumeUrl: "https://hh.ru/resume/test",
-  excludedWords: "junior", browserHeadless: true, dailyLimit: 5, searchLimit: 50, searchAllRussia: false, remoteOnly: false,
+  excludedWords: "junior", excludedDescriptionWords: "", browserHeadless: true, dailyLimit: 5, searchLimit: 50, searchAllRussia: false, remoteOnly: false,
   activeSearchBatchId: "latest", searchDelayMinSeconds: 0, searchDelayMaxSeconds: 0, applyDelayMinSeconds: 0, applyDelayMaxSeconds: 0,
   createdAt: new Date(), updatedAt: new Date(), keywords: []
 };
@@ -74,7 +74,7 @@ describe("application orchestration", () => {
   });
 
   it("rechecks current exclusions for saved vacancies before manual apply", async () => {
-    vi.mocked(ensureSettings).mockResolvedValue({ ...settings, excludedWords: "разработка" });
+    vi.mocked(ensureSettings).mockResolvedValue({ ...settings, excludedDescriptionWords: "разработка" });
     const state = await runner.applyVacancy(1);
     expect(automation.applyToVacancy).not.toHaveBeenCalled();
     expect(prisma.vacancy.update).toHaveBeenCalledWith({ where: { id: 1 }, data: { status: "skipped" } });

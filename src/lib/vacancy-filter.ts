@@ -24,17 +24,24 @@ function matchesWord(actual: string, expected: string) {
   return stem.length >= 3 && actual.startsWith(stem);
 }
 
-export function findExcludedWords(vacancy: FilterableVacancy, excludedWords: string[]) {
-  const fields = [vacancy.title, vacancy.company, vacancy.description, vacancy.city, vacancy.salary]
-    .filter((field): field is string => Boolean(field)).map(textWords);
+export type ExclusionLists = { title: string[]; description: string[] };
+
+function matchesInFields(fields: (string | null | undefined)[], excludedWords: string[]) {
+  const normalizedFields = fields.filter((field): field is string => Boolean(field)).map(textWords);
   return parseExcludedWords(excludedWords).filter((entry) => {
     const phrase = textWords(entry);
     if (phrase.length === 0) return false;
-    return fields.some((field) => field.some((_, index) =>
+    return normalizedFields.some((field) => field.some((_, index) =>
       phrase.every((word, offset) => field[index + offset] !== undefined && matchesWord(field[index + offset], word))));
   });
 }
 
-export function vacancyHasExcludedWords(vacancy: FilterableVacancy, excludedWords: string[]) {
+export function findExcludedWords(vacancy: FilterableVacancy, excludedWords: ExclusionLists | string[]) {
+  // An array retains the old all-fields behavior for callers using the legacy interface.
+  if (Array.isArray(excludedWords)) return matchesInFields([vacancy.title, vacancy.company, vacancy.description, vacancy.city, vacancy.salary], excludedWords);
+  return [...matchesInFields([vacancy.title], excludedWords.title), ...matchesInFields([vacancy.description], excludedWords.description)];
+}
+
+export function vacancyHasExcludedWords(vacancy: FilterableVacancy, excludedWords: ExclusionLists | string[]) {
   return findExcludedWords(vacancy, excludedWords).length > 0;
 }

@@ -277,7 +277,7 @@ describe("HH browser flows against local fixtures (no HH requests)", () => {
 
   it("blocks a forbidden word found only in the fresh full description before opening a response form", async () => {
     await mockHH("В описании есть junior, которого нет в сохранённом тексте");
-    await expect(service.applyToVacancy(vacancy, "", { minSeconds: 0, maxSeconds: 0 }, undefined, { excludedWords: ["junior"] }))
+    await expect(service.applyToVacancy(vacancy, "", { minSeconds: 0, maxSeconds: 0 }, undefined, { excludedWords: { title: [], description: ["junior"] } }))
       .rejects.toMatchObject({ code: "excluded" });
     expect(visited).not.toContain("/applicant/vacancy_response");
   });
@@ -405,7 +405,7 @@ describe("HH browser flows against local fixtures (no HH requests)", () => {
       }
       await route.fulfill({ contentType: "text/html; charset=utf-8", body });
     });
-    const results = await service.searchVacancies({ keywords: ["Frontend"], maxResults: 1, excludedWords: ["junior"], delayRange: { minSeconds: 0, maxSeconds: 0 } });
+    const results = await service.searchVacancies({ keywords: ["Frontend"], maxResults: 1, excludedWords: { title: [], description: ["junior"] }, delayRange: { minSeconds: 0, maxSeconds: 0 } });
     expect(results.map((result) => result.url)).toEqual(["https://hh.ru/vacancy/456"]);
     expect(results[0].description).toBe("Разработка интерфейсов React");
   });

@@ -4,7 +4,7 @@ import { writeLog } from "@/lib/log";
 import { buildSearchQueries, calculateMatchScore, isRelevantVacancy, parseExcludedWords, vacancyHasExcludedWords } from "@/lib/matching";
 import { prisma } from "@/lib/prisma";
 import { ensureSettings, saveImportedResume } from "@/lib/settings";
-import { findExcludedWords } from "@/lib/vacancy-filter";
+import { findExcludedWords, type ExclusionLists } from "@/lib/vacancy-filter";
 import type { CaptchaInput } from "@/lib/hh/captcha";
 import { parseResumeSettings } from "@/lib/resume-parser";
 import type { AutoApplyOptions } from "@/lib/hh/types";
@@ -240,7 +240,7 @@ export class HHRunner {
 
       const storedKeywords = settings.keywords.map((keyword) => keyword.value.trim()).filter(Boolean);
       const keywords = buildSearchQueries(storedKeywords, settings.resumeText);
-      const excludedWords = parseExcludedWords(settings.excludedWords);
+      const excludedWords = { title: parseExcludedWords(settings.excludedWords), description: parseExcludedWords(settings.excludedDescriptionWords) };
 
       if (keywords.length === 0) {
         throw new Error("Добавьте хотя бы одно ключевое слово в Settings");
@@ -372,7 +372,7 @@ export class HHRunner {
       minSalary?: number | null;
       resumeText?: string | null;
       keywords: string[];
-      excludedWords: string[];
+      excludedWords: ExclusionLists;
       searchBatchId: string;
     }
   ) {
@@ -541,7 +541,7 @@ export class HHRunner {
       await writeLog("info", "Вакансия пропущена: отклик уже отправлен из другого профиля", { vacancyId: id }, settings.id);
       return false;
     }
-    const excludedWords = parseExcludedWords(settings.excludedWords);
+    const excludedWords = { title: parseExcludedWords(settings.excludedWords), description: parseExcludedWords(settings.excludedDescriptionWords) };
     const matches = findExcludedWords(vacancy, excludedWords);
     if (matches.length > 0) {
       await prisma.vacancy.update({ where: { id }, data: { status: "skipped" } });
@@ -589,7 +589,7 @@ export class HHRunner {
       const message = errorMessage(error);
       if (error instanceof HHAutomationError && ["excluded", "archived", "unavailable", "requirements"].includes(error.code)) {
         await prisma.vacancy.update({ where: { id }, data: { status: "skipped" } });
-        await writeLog("info", error.code === "requirements" ? "Вакансия пропущена: дополнительные требования" : error.code === "archived" ? "Вакансия в архиве, пропускаю" : error.code === "unavailable" ? "Вакансия недоступна, пропускаю" : "Отклик заблокирован стоп-словами в полном описании", { vacancyId: id, message });
+        await writeLog("info", error.code === "requirements" ? "Вакансия пропущена: дополнительные требования" : error.code === "archived" ? "Вакансия в архиве, пропускаю" : error.code === "unavailable" ? "Вакансия недоступна, пропускаю" : "Отклик заблокирован стоп-словами", { vacancyId: id, message });
         return false;
       }
       if (error instanceof HHAutomationError && error.code === "stopped") {

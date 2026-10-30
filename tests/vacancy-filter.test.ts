@@ -3,6 +3,15 @@ import { findExcludedWords, parseExcludedWords, vacancyHasExcludedWords } from "
 import { isRelevantVacancy } from "@/lib/matching";
 
 describe("forbidden vacancy words", () => {
+  it("checks each scoped list only in its intended field", () => {
+    const director = { title: "Исполнительный директор", description: "Управление командой менеджеров" };
+    const exclusions = { title: ["менеджер"], description: ["холодные звонки"] };
+    expect(vacancyHasExcludedWords(director, exclusions)).toBe(false);
+    expect(isRelevantVacancy(director, { keywords: ["директор"], excludedWords: exclusions })).toBe(true);
+    expect(vacancyHasExcludedWords({ ...director, title: "Менеджер проектов" }, exclusions)).toBe(true);
+    expect(vacancyHasExcludedWords({ ...director, description: "Опыт холодных звонков" }, exclusions)).toBe(true);
+    expect(vacancyHasExcludedWords({ ...director, company: "Менеджер", description: "Работа с командой" }, exclusions)).toBe(false);
+  });
   it("never exempts management titles from explicit exclusions", () => {
     for (const title of ["Менеджер проектов", "Project manager"]) {
       expect(vacancyHasExcludedWords({ title }, ["менеджер", "manager"])).toBe(true);

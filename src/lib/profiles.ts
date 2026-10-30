@@ -40,7 +40,7 @@ export async function createProfile(name: string, resumeUrl: string | null, copy
     const source = copySettings ? await tx.setting.findUnique({ where: { id: sourceId } }) : null;
     // Queues, history and resume text never travel with copied search preferences.
     const preferences = source ? {
-      city: source.city, minSalary: source.minSalary, excludedWords: source.excludedWords,
+      city: source.city, minSalary: source.minSalary, excludedWords: source.excludedWords, excludedDescriptionWords: source.excludedDescriptionWords,
       remoteOnly: source.remoteOnly, searchAllRussia: source.searchAllRussia,
       dailyLimit: source.dailyLimit, searchLimit: source.searchLimit,
       searchDelayMinSeconds: source.searchDelayMinSeconds, searchDelayMaxSeconds: source.searchDelayMaxSeconds,

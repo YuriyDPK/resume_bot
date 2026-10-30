@@ -84,6 +84,7 @@ export async function PUT(request: Request) {
     resumeUrl,
     ...(owner ? { hhAccountId: owner.accountId, resumeVerifiedAt: new Date() } : {}),
     excludedWords: parseExcludedWords(Array.isArray(body.excludedWords) ? body.excludedWords.map(String) : String(body.excludedWords ?? "")).join("\n"),
+    excludedDescriptionWords: parseExcludedWords(Array.isArray(body.excludedDescriptionWords) ? body.excludedDescriptionWords.map(String) : String(body.excludedDescriptionWords ?? previous.excludedDescriptionWords)).join("\n"),
     browserHeadless: true,
     dailyLimit: Math.max(1, optionalNumber(body.dailyLimit) ?? 5),
     searchLimit: Math.min(1000, Math.max(1, optionalNumber(body.searchLimit) ?? 50)),

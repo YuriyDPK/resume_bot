@@ -12,6 +12,8 @@ export function VacancyMenu({ children, row, profileId, disabled, onChange, onSk
   const [open, setOpen] = useState(false);
   const [word, setWord] = useState("");
   const [words, setWords] = useState<string[]>([]);
+  const [descriptionWords, setDescriptionWords] = useState<string[]>([]);
+  const [scope, setScope] = useState<"title" | "description">("title");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   async function edit() {
@@ -21,6 +23,7 @@ export function VacancyMenu({ children, row, profileId, disabled, onChange, onSk
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error);
       setWords(payload.words);
+      setDescriptionWords(payload.descriptionWords);
     } catch (failure) { setError(failure instanceof Error ? failure.message : "Не удалось загрузить фильтры"); }
     finally { setBusy(false); }
   }
@@ -28,10 +31,11 @@ export function VacancyMenu({ children, row, profileId, disabled, onChange, onSk
     if (!phrase.trim() || busy) return;
     setBusy(true); setError(null);
     try {
-      const response = await fetch("/api/settings/exclusions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, word: phrase, profileId, ...(action === "add" ? { vacancyId: row.id } : {}) }) });
+      const response = await fetch("/api/settings/exclusions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, word: phrase, scope, profileId, ...(action === "add" ? { vacancyId: row.id } : {}) }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error);
-      setWords(payload.words); setWord(""); onChange();
+      if (scope === "title") setWords(payload.words); else setDescriptionWords(payload.words);
+      setWord(""); onChange();
       if (action === "add") setOpen(false);
     } catch (failure) { setError(failure instanceof Error ? failure.message : "Не удалось сохранить фильтр"); }
     finally { setBusy(false); }
@@ -51,10 +55,10 @@ export function VacancyMenu({ children, row, profileId, disabled, onChange, onSk
     <Popover.Root open={open} onOpenChange={setOpen} modal={false}><Popover.Anchor virtualRef={{ current: { getBoundingClientRect: () => new DOMRect(point.x, point.y, 1, 1) } }} />
       <Popover.Portal><Popover.Content className="exclusion-popover" side="bottom" align="start" sideOffset={5} collisionPadding={12} onCloseAutoFocus={(event) => event.preventDefault()}>
         <header><div><strong>Не интересует</strong><small>Стоп-фраза для этого резюме</small></div><Popover.Close className="icon-button" aria-label="Закрыть фильтр"><X size={15} /></Popover.Close></header>
-        <p className="exclusion-vacancy">{row.title}</p><p className="muted-text">Введите только нежелательное слово или часть названия. Всю вакансию добавлять не нужно.</p>
-        <form onSubmit={(event) => { event.preventDefault(); void save("add", word); }}><label className="field-group"><span>Слово или фраза</span><div className="clearable-input"><input aria-label="Нежелательное слово или фраза" maxLength={150} value={word} placeholder="Например, стажёр" onChange={(event) => setWord(event.target.value)} disabled={busy} /><button type="button" className="icon-button" aria-label="Очистить стоп-фразу" onClick={() => setWord("")} disabled={!word || busy}><X size={14} /></button></div></label>
+        <p className="exclusion-vacancy">{row.title}</p><p className="muted-text">Введите нежелательное слово или фразу и выберите, где их проверять.</p>
+        <form onSubmit={(event) => { event.preventDefault(); void save("add", word); }}><label className="field-group"><span>Где проверять</span><select aria-label="Где проверять стоп-фразу" value={scope} disabled={busy} onChange={(event) => setScope(event.target.value as "title" | "description")}><option value="title">В названии вакансии</option><option value="description">В описании вакансии</option></select></label><label className="field-group"><span>Слово или фраза</span><div className="clearable-input"><input aria-label="Нежелательное слово или фраза" maxLength={150} value={word} placeholder="Например, стажёр" onChange={(event) => setWord(event.target.value)} disabled={busy} /><button type="button" className="icon-button" aria-label="Очистить стоп-фразу" onClick={() => setWord("")} disabled={!word || busy}><X size={14} /></button></div></label>
           <button className="button primary" type="submit" disabled={busy || !word.trim()}>Добавить и пропустить</button></form>
-        {words.length > 0 && <div className="exclusion-current"><small>Уже исключены</small><div className="filter-chips">{words.map((phrase) => <span className="exclusion-chip" key={phrase}><button type="button" onClick={() => setWord(phrase)} title="Подставить в поле">{phrase}</button><button type="button" disabled={busy} aria-label={"Удалить стоп-фразу " + phrase} onClick={() => void save("remove", phrase)}><X size={12} /></button></span>)}</div></div>}
+        {(scope === "title" ? words : descriptionWords).length > 0 && <div className="exclusion-current"><small>Уже исключены в {scope === "title" ? "названии" : "описании"}</small><div className="filter-chips">{(scope === "title" ? words : descriptionWords).map((phrase) => <span className="exclusion-chip" key={phrase}><button type="button" onClick={() => setWord(phrase)} title="Подставить в поле">{phrase}</button><button type="button" disabled={busy} aria-label={"Удалить стоп-фразу " + phrase} onClick={() => void save("remove", phrase)}><X size={12} /></button></span>)}</div></div>}
         {error && <p className="inline-error" role="alert">{error}</p>}
       </Popover.Content></Popover.Portal>
     </Popover.Root>

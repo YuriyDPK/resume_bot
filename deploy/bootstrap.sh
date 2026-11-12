@@ -44,15 +44,6 @@ touch /root/.ssh/authorized_keys
 chmod 600 /root/.ssh/authorized_keys
 printf 'restrict,command="/usr/local/sbin/resume-bot-deploy" %s\n' "$(cat /root/.ssh/resume-bot-deploy.pub)" >> /root/.ssh/authorized_keys
 
-python3 - <<'PY' > /root/resume-bot-access.txt
-import secrets
-print('bot:' + secrets.token_urlsafe(24))
-PY
-chmod 600 /root/resume-bot-access.txt
-cut -d: -f2- /root/resume-bot-access.txt | htpasswd -i -c -B /etc/nginx/resume-bot.htpasswd bot > /dev/null
-chown root:www-data /etc/nginx/resume-bot.htpasswd
-chmod 640 /etc/nginx/resume-bot.htpasswd
-
 cat > "$nginx_file" <<EOF
 server {
     listen 80;

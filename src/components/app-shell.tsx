@@ -44,6 +44,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             );
           })}
         </nav>
+        <form action="/account/logout" method="post"><button type="submit" className="nav-item">Выйти из аккаунта</button></form>
       </aside>
 
       <main className="main-shell">{children}</main>

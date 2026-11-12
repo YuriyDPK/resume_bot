@@ -71,7 +71,7 @@ runuser -u resumebot -- "${app_env[@]}" bash -c 'cd "$1"; npm run prisma:deploy'
 ln -sfn "$release" "$current"
 systemctl start resume-bot.service
 for attempt in $(seq 1 30); do
-  if systemctl is-active --quiet resume-bot.service && curl --fail --silent --max-time 2 http://127.0.0.1:3013/api/settings > /dev/null; then
+  if systemctl is-active --quiet resume-bot.service && curl --fail --silent --max-time 2 http://127.0.0.1:3013/healthz > /dev/null; then
     finished=1
     echo "Deployed $sha successfully."
     exit 0

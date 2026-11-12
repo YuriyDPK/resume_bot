@@ -16,7 +16,7 @@ Environment=HH_STORAGE_STATE_PATH=/var/lib/resume-bot/hh-auth.json
 Environment=PLAYWRIGHT_BROWSERS_PATH=/var/lib/resume-bot/playwright
 Environment=HOME=/var/lib/resume-bot
 Environment=PATH=/opt/resume-bot/node/bin:/usr/local/bin:/usr/bin:/bin
-ExecStart=/opt/resume-bot/node/bin/node /opt/resume-bot/current/node_modules/next/dist/bin/next start -H 127.0.0.1 -p 3013
+ExecStart=/bin/sh -c 'if [ -f /opt/resume-bot/current/server/gateway.mjs ]; then exec /opt/resume-bot/node/bin/node /opt/resume-bot/current/server/gateway.mjs; else exec /opt/resume-bot/node/bin/node /opt/resume-bot/current/node_modules/next/dist/bin/next start -H 127.0.0.1 -p 3013; fi'
 Restart=on-failure
 RestartSec=5
 UMask=0077

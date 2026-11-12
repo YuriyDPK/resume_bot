@@ -9,6 +9,7 @@ User=resumebot
 Group=resumebot
 WorkingDirectory=/opt/resume-bot/current
 Environment=NODE_ENV=production
+Environment=APP_PUBLIC_ORIGIN=https://hh-bot.157.228.121.153.sslip.io
 Environment=NEXT_TELEMETRY_DISABLED=1
 Environment=DATABASE_URL=file:/var/lib/resume-bot/dev.db
 Environment=HH_STORAGE_STATE_PATH=/var/lib/resume-bot/hh-auth.json

@@ -2,13 +2,13 @@ import { profileMatches, staleProfileMessage } from "@/lib/profiles";
 import { NextResponse } from "next/server";
 import { hhRunner } from "@/lib/hh/runner";
 import { normalizeHHResumeUrl } from "@/lib/hh/resume-url";
+import { foreignRequest } from "@/lib/request-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const origin = request.headers.get("origin");
-  if (request.headers.get("sec-fetch-site") === "cross-site" || (origin && origin !== new URL(request.url).origin)) {
+  if (foreignRequest(request)) {
     return NextResponse.json({ error: "Недопустимый источник запроса" }, { status: 403 });
   }
   const body = await request.json().catch(() => null);

@@ -1,14 +1,10 @@
 import { NextResponse } from "next/server";
 import { hhRunner } from "@/lib/hh/runner";
 import { parseCaptchaInput } from "@/lib/hh/captcha";
+import { foreignRequest } from "@/lib/request-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-function foreignRequest(request: Request) {
-  const origin = request.headers.get("origin");
-  return request.headers.get("sec-fetch-site") === "cross-site" || (origin && origin !== new URL(request.url).origin);
-}
 
 export async function GET(request: Request) {
   if (foreignRequest(request)) return NextResponse.json({ error: "Недопустимый источник запроса" }, { status: 403 });

@@ -795,22 +795,27 @@ tr:last-child td {
 }
 
 .hh-workspace { position: fixed; inset: 18px 18px 18px 278px; z-index: 1000; display: grid; grid-template-rows: auto auto auto minmax(100px, 1fr) auto; min-width: 0; overflow: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: 0 12px 64px #15213e44; }
+.hh-workspace.expanded, .hh-workspace:fullscreen { inset: 0; width: 100%; height: 100%; border: 0; border-radius: 0; }
 .hh-browser-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 14px 18px; }
 .hh-browser-title, .hh-browser-actions, .hh-resume-controls { display: flex; align-items: center; gap: 12px; }
+.hh-zoom-controls { display: flex; align-items: center; gap: 2px; }
+.hh-zoom-controls .icon-button.active { background: var(--blue-soft); color: var(--blue); }
+.hh-zoom-value { min-width: 48px; padding: 5px 2px; border: 0; background: transparent; color: var(--text); font-size: 12px; cursor: pointer; }
 .hh-browser-title h2 { font-size: 18px; }
 .hh-browser-title span { color: var(--muted); font-size: 12px; }
 .hh-browser-status { padding: 10px 18px; background: var(--blue-soft); overflow-wrap: anywhere; font-size: 13px; }
 .hh-browser-status.needs-action { background: var(--amber-soft); color: #80500c; }
 .hh-browser-address { padding: 7px 18px; color: var(--muted); background: var(--surface-soft); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
-.hh-viewport { display: flex; align-items: center; justify-content: center; min-height: 0; background: #e8edf4; overflow: hidden; outline: none; }
+.hh-viewport { display: block; min-width: 0; min-height: 0; background: #e8edf4; overflow: hidden; outline: none; }
 .hh-viewport.interactive { cursor: crosshair; touch-action: none; }
+.hh-viewport.panning { cursor: grab; overflow: auto; touch-action: pan-x pan-y; overscroll-behavior: contain; }
+.hh-viewport.panning:active { cursor: grabbing; }
 .hh-viewport:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+.hh-viewport-stage { display: flex; align-items: center; justify-content: center; min-width: 100%; min-height: 100%; }
 .hh-viewport img { display: block; width: 100%; height: 100%; object-fit: contain; user-select: none; pointer-events: none; }
 .hh-browser-footer { padding: 12px 18px; border-top: 1px solid var(--line); max-height: 46dvh; overflow: auto; }
 .hh-browser-footer p { margin: 0 0 10px; font-size: 12px; }
 .hh-browser-footer p:last-child { margin-bottom: 0; }
-.hh-input-controls { display: flex; flex-wrap: wrap; gap: 7px; }
-.hh-input-controls input { min-width: 160px; flex: 1; padding: 9px 10px; border: 1px solid var(--line); border-radius: 7px; }
 .hh-resume-controls { margin-top: 12px; flex-wrap: wrap; font-size: 12px; }
 .hh-browser-loading { padding: 48px; text-align: center; }
 .hh-browser-launcher { position: fixed; z-index: 1000; bottom: 22px; right: 22px; display: flex; align-items: center; gap: 10px; padding: 13px 18px; border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); background: var(--surface); color: var(--text); cursor: pointer; }
@@ -820,7 +825,7 @@ tr:last-child td {
   .hh-workspace { inset: 5px; }
   .hh-browser-toolbar, .hh-browser-footer { padding: 10px; }
   .hh-browser-actions { flex-wrap: wrap; gap: 6px; }
-  .hh-browser-actions .button, .hh-input-controls .button { width: auto; }
+  .hh-browser-actions .button { width: auto; }
 }
 
 /* Shared application surfaces and controls. */

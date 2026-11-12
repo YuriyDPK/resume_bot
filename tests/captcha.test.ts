@@ -11,7 +11,7 @@ describe("manual CAPTCHA pause", () => {
     isClosed: vi.fn(() => false), bringToFront: vi.fn(async () => undefined),
     locator: () => ({ innerText: content }), viewportSize: () => ({ width: 1366, height: 900 }),
     screenshot: vi.fn(async () => Buffer.from("test-png")),
-    mouse: { click: vi.fn(), wheel: vi.fn() }, keyboard: { insertText: vi.fn(), press: vi.fn() }
+    mouse: { click: vi.fn(), wheel: vi.fn() }, keyboard: { type: vi.fn(), press: vi.fn() }
   };
   beforeEach(() => {
     vi.useFakeTimers();
@@ -66,7 +66,7 @@ describe("manual CAPTCHA pause", () => {
     await controller.input({ type: "text", text: "human input" });
     await controller.input({ type: "key", key: "Enter" });
     expect(page.mouse.click).toHaveBeenCalledWith(10, 20);
-    expect(page.keyboard.insertText).toHaveBeenCalledWith("human input");
+    expect(page.keyboard.type).toHaveBeenCalledWith("human input");
     expect(page.keyboard.press).toHaveBeenCalledWith("Enter");
     await expect(controller.input({ type: "click", x: 5000, y: 20 })).rejects.toThrow("Координаты");
     challenge = false;

@@ -32,7 +32,9 @@ export async function forwardBrowserInput(page: Page, input: BrowserInput) {
       if (input.action === "down") await page.mouse.down();
       if (input.action === "up") await page.mouse.up();
     }
-  } else if (input.type === "text") await page.keyboard.insertText(input.text);
+  // Key events matter for controlled HH forms and challenges that react to
+  // keydown/keyup; Playwright falls back to text insertion for other scripts.
+  } else if (input.type === "text") await page.keyboard.type(input.text);
   else if (input.type === "key") await page.keyboard.press(input.key === "SelectAll" ? process.platform === "darwin" ? "Meta+A" : "Control+A" : input.key);
   else if (input.type === "scroll") await page.mouse.wheel(0, input.deltaY);
 }

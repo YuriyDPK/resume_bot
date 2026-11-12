@@ -1,0 +1,26 @@
+[Unit]
+Description=HH Resume Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=resumebot
+Group=resumebot
+WorkingDirectory=/opt/resume-bot/current
+Environment=NODE_ENV=production
+Environment=NEXT_TELEMETRY_DISABLED=1
+Environment=DATABASE_URL=file:/var/lib/resume-bot/dev.db
+Environment=HH_STORAGE_STATE_PATH=/var/lib/resume-bot/hh-auth.json
+Environment=PLAYWRIGHT_BROWSERS_PATH=/var/lib/resume-bot/playwright
+Environment=HOME=/var/lib/resume-bot
+Environment=PATH=/opt/resume-bot/node/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/opt/resume-bot/node/bin/node /opt/resume-bot/current/node_modules/next/dist/bin/next start -H 127.0.0.1 -p 3013
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

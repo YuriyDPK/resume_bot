@@ -1,0 +1,45 @@
+name: Production
+
+on:
+  push:
+    branches: [prod]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: resume-bot-production
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run check
+
+  deploy:
+    needs: verify
+    if: github.ref == 'refs/heads/prod'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Deploy verified commit
+        env:
+          DEPLOY_KEY: ${{ secrets.RESUME_BOT_DEPLOY_KEY }}
+        run: |
+          set -eu
+          test -n "$DEPLOY_KEY"
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/resume_bot_deploy"
+          chmod 600 "$HOME/.ssh/resume_bot_deploy"
+          printf '%s\n' '157.228.121.153 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICXIdRmKv0UBTn8I9rTZXE8pdwY+hdli9NziBIQbki4Q' > "$HOME/.ssh/known_hosts"
+          ssh -i "$HOME/.ssh/resume_bot_deploy" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes root@157.228.121.153 deploy "$GITHUB_SHA"

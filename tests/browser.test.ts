@@ -142,7 +142,7 @@ describe("HH browser flows against local fixtures (no HH requests)", () => {
   });
 
   it("shows and controls the existing headless page including a nested frame without opening another browser", async () => {
-    await page.setContent(`<main><input aria-label="fixture-input"><iframe srcdoc="<button onclick='this.textContent=String(42)'>Nested control</button>"></iframe></main>`);
+    await page.setContent(`<main><input aria-label="fixture-input"><iframe srcdoc="<button onclick='this.textContent=String(42)'>Nested control</button><input aria-label='nested-input' onkeydown='this.dataset.keys=(this.dataset.keys||0)*1+1'>"></iframe></main>`);
     const view = service.getBrowserView();
     const frame = await service.getBrowserFrame();
     expect(frame?.pageId).toBe(view.pageId);
@@ -156,7 +156,32 @@ describe("HH browser flows against local fixtures (no HH requests)", () => {
     const box = await button.boundingBox();
     await service.sendBrowserInput(view.pageId!, { type: "click", x: box!.x + 10, y: box!.y + 10 });
     expect(await button.innerText()).toBe("42");
+    const nestedInput = page.frameLocator("iframe").getByRole("textbox", { name: "nested-input" });
+    const nestedBox = await nestedInput.boundingBox();
+    await service.sendBrowserInput(view.pageId!, { type: "click", x: nestedBox!.x + 5, y: nestedBox!.y + 5 });
+    await service.sendBrowserInput(view.pageId!, { type: "text", text: "Abc123" });
+    expect(await nestedInput.inputValue()).toBe("Abc123");
+    expect(await nestedInput.getAttribute("data-keys")).toBe("6");
+    await service.sendBrowserInput(view.pageId!, { type: "text", text: "тест" });
+    expect(await nestedInput.inputValue()).toBe("Abc123тест");
     expect(await page.evaluate(() => navigator.userAgent)).toContain("HeadlessChrome");
+  });
+
+  it("forwards actual keystrokes to a manually selected input during a synthetic verification pause", async () => {
+    let paused = false;
+    service.setCaptchaHandler((waiting) => { paused = waiting; });
+    await page.setContent(`<section data-qa="captcha"><iframe srcdoc="<input aria-label='test-check' readonly onkeydown='if(event.key.length===1)this.value+=event.key'>"></iframe></section>`);
+    const waiting = service["waitForCaptcha"](page);
+    await vi.waitFor(() => expect(paused).toBe(true));
+    const input = page.frameLocator("iframe").getByRole("textbox", { name: "test-check" });
+    const box = await input.boundingBox();
+    await service.sendCaptchaInput({ type: "click", x: box!.x + 5, y: box!.y + 5 });
+    await service.sendCaptchaInput({ type: "text", text: "A2b7" });
+    expect(await input.inputValue()).toBe("A2b7");
+    await page.locator('[data-qa="captcha"]').evaluate((element) => element.remove());
+    await page.locator("body").evaluate((element) => { element.textContent = "Проверка завершена"; });
+    await service.sendCaptchaInput({ type: "continue" });
+    expect(await waiting).toBe(true);
   });
 
   it.each(["Вы\u00a0откликнулись", "Вы\u202fоткликнулись", "Вы уже откликались на эту вакансию", "Резюме доставлено"])("skips an already-applied vacancy immediately: %s", async (label) => {

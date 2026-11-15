@@ -53,7 +53,7 @@ function errorMessage(error: unknown) {
 }
 
 // Bump after runner/browser changes so dev updates apply safely between jobs.
-const RUNNER_REVISION = "2026-10-28-inbox-and-ownership-v3";
+const RUNNER_REVISION = "2026-11-15-browser-stream-v1";
 
 export class HHRunner {
   readonly runtimeRevision = RUNNER_REVISION;
@@ -112,6 +112,7 @@ export class HHRunner {
   }
 
   getBrowserFrame() { return this.automation.getBrowserFrame(); }
+  streamBrowserFrames(pageId: string, signal: AbortSignal) { return this.automation.streamBrowserFrames(pageId, signal); }
 
   sendBrowserInput(pageId: string, pauseId: number, input: CaptchaInput | { type: "reload" }) {
     const action = this.browserInputs.then(async () => {
@@ -568,7 +569,7 @@ export class HHRunner {
           settings.coverLetterTemplate,
           { minSeconds: settings.applyDelayMinSeconds ?? 3, maxSeconds: settings.applyDelayMaxSeconds ?? 8 },
           () => this.state.stopRequested,
-          { excludedWords, preferredResumeUrl: settings.resumeUrl, requirePreferredResume: Boolean(settings.resumeUrl), preferredResumeTitle: this.verifiedOwner?.title, allowTitleMatch: this.verifiedOwner?.uniqueTitle, expectedAccountId: this.verifiedOwner?.accountId, skipAdditionalRequirements }
+          { excludedWords, preferredResumeUrl: settings.resumeUrl, requirePreferredResume: Boolean(settings.resumeUrl), preferredResumeTitle: this.verifiedOwner?.title, allowTitleMatch: this.verifiedOwner?.uniqueTitle, expectedAccountId: this.verifiedOwner?.accountId, skipAdditionalRequirements, questionAnswers: settings.questionAnswers }
         );
       } catch (error) {
         if (error instanceof HHAutomationError && ["auth", "excluded", "archived", "unavailable", "requirements", "stopped"].includes(error.code)) throw error;

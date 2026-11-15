@@ -14,6 +14,7 @@ export default async function SettingsPage() {
     minSalary: settings.minSalary ?? "",
     coverLetterTemplate: settings.coverLetterTemplate,
     resumeText: settings.resumeText,
+    questionAnswers: settings.questionAnswers,
     resumeUrl: settings.resumeUrl ?? "",
     excludedWords: settings.excludedWords,
     excludedDescriptionWords: settings.excludedDescriptionWords,

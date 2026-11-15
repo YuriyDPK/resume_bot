@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bot, BriefcaseBusiness, LayoutDashboard, MessageSquare, Rocket, Settings } from "lucide-react";
+import { Bot, BriefcaseBusiness, LayoutDashboard, LogOut, MessageSquare, Rocket, Settings } from "lucide-react";
 import { ResumeProfiles } from "@/components/resume-profiles";
 import { HHBrowserWorkspace } from "@/components/hh-browser-workspace";
 
@@ -44,7 +44,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             );
           })}
         </nav>
-        <form action="/account/logout" method="post"><button type="submit" className="nav-item">Выйти из аккаунта</button></form>
+        <form action="/account/logout" method="post" className="sidebar-logout"><button type="submit" className="nav-item"><LogOut size={18} /><span>Выйти из аккаунта</span></button></form>
       </aside>
 
       <main className="main-shell">{children}</main>

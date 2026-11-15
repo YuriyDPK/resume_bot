@@ -37,6 +37,21 @@ try {
   assert.ok(applied.vacancies.every((row) => row.status === "applied"));
 
   await page.goto(base + "/vacancies?status=all");
+  const logout = page.locator(".sidebar-logout button");
+  assert.equal(await logout.evaluate((button) => getComputedStyle(button).backgroundColor), "rgba(0, 0, 0, 0)");
+  const vacancyTitle = page.locator(".vacancy-title-cell a").first();
+  const titleText = (await vacancyTitle.textContent()).trim();
+  await vacancyTitle.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Не интересует…" }).click();
+  const titleWords = page.locator(".exclusion-vacancy button:not(.exclusion-full-title)");
+  const firstWord = await titleWords.nth(0).textContent();
+  const secondWord = await titleWords.nth(1).textContent();
+  await titleWords.nth(0).click();
+  await titleWords.nth(1).click();
+  assert.equal(await page.getByLabel("Нежелательное слово или фраза").inputValue(), firstWord + " " + secondWord);
+  await page.getByRole("button", { name: "Всё название" }).click();
+  assert.equal(await page.getByLabel("Нежелательное слово или фраза").inputValue(), titleText);
+  await page.getByRole("button", { name: "Закрыть фильтр" }).click();
   await choose(page.getByLabel("Вакансий на странице"), "10");
   await page.waitForURL((url) => url.searchParams.get("pageSize") === "10");
   await page.getByRole("button", { name: "Следующая страница вакансий", exact: true }).click();
@@ -97,7 +112,7 @@ try {
   assert.equal(autoRuns[0].limit, 50); assert.equal(autoRuns[0].skipAdditionalRequirements, true);
 
   await page.goto(base + "/settings");
-  assert.equal(await page.locator(".settings-section").count(), 4);
+  assert.equal(await page.locator(".settings-section").count(), 5);
   const upload = await page.getByRole("button", { name: "Загрузить из HH", exact: true }).boundingBox();
   const parse = await page.getByRole("button", { name: "Распарсить по ссылке", exact: true }).boundingBox();
   assert.ok(Math.abs(upload.y - parse.y) < 3 && parse.x > upload.x);

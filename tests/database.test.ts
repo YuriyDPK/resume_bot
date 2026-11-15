@@ -72,6 +72,8 @@ describe("Prisma upgrade and existing SQLite conventions", () => {
       for (const statement of inboxSql.split(";").filter((part) => part.trim())) await legacy.$executeRawUnsafe(statement);
       const scopedSql = await readFile("prisma/migrations/20261030120000_scoped_exclusions/migration.sql", "utf8");
       for (const statement of scopedSql.split(";").filter((part) => part.trim())) await legacy.$executeRawUnsafe(statement);
+      const answersSql = await readFile("prisma/migrations/20261114120000_question_answers/migration.sql", "utf8");
+      for (const statement of answersSql.split(";").filter((part) => part.trim())) await legacy.$executeRawUnsafe(statement);
       expect(await legacy.setting.findUnique({ where: { id: 1 } })).toMatchObject({ resumeText: "Мой опыт", city: "Казань", name: "Основное резюме", excludedWords: "менеджер", excludedDescriptionWords: "менеджер" });
       expect(await legacy.vacancy.findUnique({ where: { id: 1 } })).toMatchObject({ profileId: 1, status: "applied" });
       expect(await legacy.application.findFirst()).toMatchObject({ vacancyId: 1, status: "applied", appliedAt: new Date(timestamp) });

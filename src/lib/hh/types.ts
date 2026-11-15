@@ -40,6 +40,7 @@ export type ApplyOptions = {
   allowTitleMatch?: boolean;
   expectedAccountId?: string;
   skipAdditionalRequirements?: boolean;
+  questionAnswers?: string;
 };
 
 export type AutoApplyOptions = { limit: number; skipAdditionalRequirements?: boolean; vacancyIds?: number[] };

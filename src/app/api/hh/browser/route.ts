@@ -8,7 +8,15 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   if (foreignRequest(request)) return NextResponse.json({ error: "Недопустимый источник запроса" }, { status: 403 });
-  if (!new URL(request.url).searchParams.has("frame")) {
+  const params = new URL(request.url).searchParams;
+  if (params.has("stream")) {
+    const pageId = params.get("pageId");
+    if (!pageId || pageId.length > 100 || typeof hhRunner.streamBrowserFrames !== "function") return new Response(null, { status: 409 });
+    const stream = await Promise.resolve().then(() => hhRunner.streamBrowserFrames(pageId, request.signal)).catch(() => null);
+    if (!stream) return new Response(null, { status: 409 });
+    return new Response(stream, { headers: { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-store, no-transform", "X-Accel-Buffering": "no", "Cross-Origin-Resource-Policy": "same-origin" } });
+  }
+  if (!params.has("frame")) {
     return NextResponse.json(hhRunner.getBrowserView(), { headers: { "Cache-Control": "no-store, private" } });
   }
   const frame = await hhRunner.getBrowserFrame();

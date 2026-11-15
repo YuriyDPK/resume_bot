@@ -4,6 +4,7 @@ export type TransferSettings = {
   minSalary: number | "";
   coverLetterTemplate: string;
   resumeText: string;
+  questionAnswers?: string;
   resumeUrl: string;
   excludedWords: string;
   excludedDescriptionWords: string;
@@ -25,6 +26,7 @@ export function exportSettings(value: TransferSettings) {
   // Explicitly copy only editable settings, never account state or additional API fields.
   const settings: Record<string, string | number | boolean> = { minSalary: value.minSalary };
   for (const key of [...stringFields, ...booleanFields, ...numberFields]) settings[key] = value[key];
+  if (value.questionAnswers !== undefined) settings.questionAnswers = value.questionAnswers;
   return JSON.stringify({ format: "hh-bot-settings", version: 1, settings }, null, 2);
 }
 
@@ -46,5 +48,7 @@ export function importSettings(text: string): TransferSettings {
   }
   const result: Record<string, unknown> = { minSalary: source.minSalary };
   for (const key of [...stringFields, ...booleanFields, ...numberFields]) result[key] = source[key];
+  if (source.questionAnswers !== undefined && typeof source.questionAnswers !== "string") throw new Error("Некорректные ответы на вопросы.");
+  if (source.questionAnswers !== undefined) result.questionAnswers = source.questionAnswers;
   return result as TransferSettings;
 }

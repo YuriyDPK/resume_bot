@@ -48,9 +48,56 @@ export class HHBrowserSession {
     const page = this.viewPage();
     const { pageId } = this.getBrowserView();
     if (!page || !pageId) return null;
-    this.capture = page.screenshot({ type: "jpeg", quality: 80, timeout: 3000 })
+    this.capture = page.screenshot({ type: "jpeg", quality: 65, timeout: 3000 })
       .then((image) => this.viewPage() === page ? { image, pageId } : null).catch(() => null);
     try { return await this.capture; } finally { this.capture = undefined; }
+  }
+
+  async streamBrowserFrames(pageId: string, signal: AbortSignal) {
+    const page = this.viewPage();
+    if (!page || !this.context || this.getBrowserView().pageId !== pageId || signal.aborted) return null;
+    const cdp = await this.context.newCDPSession(page);
+    if (signal.aborted || this.viewPage() !== page) { await cdp.detach().catch(() => undefined); return null; }
+    const encoder = new TextEncoder();
+    let closed = false;
+    let timer: ReturnType<typeof setInterval> | undefined;
+    let controller: ReadableStreamDefaultController<Uint8Array>;
+    const cleanup = () => {
+      if (closed) return;
+      closed = true;
+      if (timer) clearInterval(timer);
+      signal.removeEventListener("abort", cleanup);
+      page.removeListener("close", cleanup);
+      try { controller.close(); } catch { /* The reader may already be closed. */ }
+      void cdp.detach().catch(() => undefined);
+    };
+    const stream = new ReadableStream<Uint8Array>({
+      start: (streamController) => {
+        controller = streamController;
+        streamController.enqueue(encoder.encode(": connected\n\n"));
+        cdp.on("Page.screencastFrame", ({ data, sessionId }: { data: string; sessionId: number }) => {
+          if (!closed && this.viewPage() === page && (controller.desiredSize ?? 0) > 0) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ pageId, image: data })}\n\n`));
+          }
+          void cdp.send("Page.screencastFrameAck", { sessionId }).catch(cleanup);
+        });
+        timer = setInterval(() => {
+          if (this.viewPage() !== page) cleanup();
+          else if ((controller.desiredSize ?? 0) > 0) controller.enqueue(encoder.encode(": keepalive\n\n"));
+        }, 15000);
+        signal.addEventListener("abort", cleanup, { once: true });
+        page.once("close", cleanup);
+      },
+      cancel: cleanup
+    });
+    try {
+      await cdp.send("Page.startScreencast", { format: "jpeg", quality: 65, everyNthFrame: 1 });
+      if (signal.aborted) cleanup();
+      return stream;
+    } catch {
+      cleanup();
+      return null;
+    }
   }
 
   async sendBrowserInput(pageId: string, input: BrowserInput) {

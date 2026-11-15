@@ -66,6 +66,7 @@ model Setting {
   minSalary            Int?
   coverLetterTemplate  String   @default("Здравствуйте! Заинтересовала ваша вакансия. Буду рад обсудить, чем мой опыт может быть полезен команде.")
   resumeText           String   @default("")
+  questionAnswers      String   @default("")
   resumeUrl            String?
   excludedWords        String   @default("")
   excludedDescriptionWords String @default("")

@@ -81,6 +81,19 @@ describe("HH browser flows against local fixtures (no HH requests)", () => {
     });
   }
 
+  it("submits an application with a configured answer to a known question", async () => {
+    const form = `<main data-qa="main-content">
+      <select name="resumeId"><option value="one">Frontend React TypeScript</option></select>
+      <div data-qa="vacancy-response-questionnaire"><label>Сколько лет опыта?<input name="task_experience"></label></div>
+      <button data-qa="vacancy-response-submit-popup" onclick="window.answer=document.querySelector('[name=task_experience]').value; document.querySelector('main').innerHTML='<p>Отклик отправлен</p>'">Отправить</button>
+    </main>`;
+    await mockHH(undefined, form);
+    const result = await service.applyToVacancy(vacancy, "", { minSeconds: 0, maxSeconds: 0 }, undefined,
+      { excludedWords: [], questionAnswers: "Сколько лет опыта? | 5" });
+    expect(result.alreadyApplied).toBe(false);
+    expect(await page.evaluate(() => (window as unknown as { answer: string }).answer)).toBe("5");
+  });
+
   it("records account metadata only for a visible authenticated profile", async () => {
     await page.context().route("**/*", (route) => route.fulfill({ contentType: "text/html; charset=utf-8", body: '<a data-qa="mainmenu_applicantProfile" style="display:none">Профиль</a><a data-qa="login">Войти</a>' }));
     await page.goto("https://hh.ru/applicant/resumes");

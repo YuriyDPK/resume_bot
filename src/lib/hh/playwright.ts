@@ -3,6 +3,7 @@ import { type Frame, type Locator, type Page } from "playwright";
 import { hhConfig } from "@/lib/env";
 import { writeLog } from "@/lib/log";
 
+import { fillQuestionAnswers } from "@/lib/hh/question-answers";
 import { HHBrowserSession } from "@/lib/hh/browser-session";
 import { HHAutomationError, type ApplyOptions, type ApplyToVacancyResult, type DelayRange, type ScrapedVacancy, type SearchPageProgress, type StopSignal } from "@/lib/hh/types";
 import { findExcludedWordsByField, formatExcludedMatches, type ExclusionLists } from "@/lib/vacancy-filter";
@@ -814,7 +815,7 @@ export class HHPlaywrightService extends HHBrowserSession {
     }
     await this.fillCoverLetter(page, coverLetter);
 
-    if (await this.hasAdditionalRequirements(page)) {
+    if (await this.hasAdditionalRequirements(page) && !await fillQuestionAnswers(page, options.questionAnswers ?? "")) {
       await this.skipRequirementsIfRequested(page, options.skipAdditionalRequirements ?? false, stopRequested);
       await this.waitForManualAction(page, stopRequested,
         "В форме HH есть дополнительные требования. Завершите их и отправьте отклик вручную, затем нажмите «Проверить и продолжить».");

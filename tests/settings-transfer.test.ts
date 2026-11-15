@@ -16,6 +16,11 @@ describe("settings file", () => {
     expect(serialized).not.toContain("hhAccountId");
     expect(serialized).not.toContain("activeSearchBatchId");
   });
+  it("round-trips configured answers and accepts older files", () => {
+    const withAnswers = { ...settings, questionAnswers: "Опыт? | 5 лет" };
+    expect(importSettings(exportSettings(withAnswers))).toEqual(withAnswers);
+    expect(importSettings(exportSettings(settings))).toEqual(settings);
+  });
   it("rejects corrupted, incomplete and incompatible files", () => {
     expect(() => importSettings("{" )).toThrow();
     expect(() => importSettings(JSON.stringify({ format: "hh-bot-settings", version: 2, settings }))).toThrow();

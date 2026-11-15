@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GET, POST } from "@/app/api/hh/browser/route";
 import { hhRunner } from "@/lib/hh/runner";
 
-vi.mock("@/lib/hh/runner", () => ({ hhRunner: { getBrowserView: vi.fn(), getBrowserFrame: vi.fn(), sendBrowserInput: vi.fn() } }));
+vi.mock("@/lib/hh/runner", () => ({ hhRunner: { getBrowserView: vi.fn(), getBrowserFrame: vi.fn(), streamBrowserFrames: vi.fn(), sendBrowserInput: vi.fn() } }));
 const url = "http://localhost:3000/api/hh/browser";
 
 describe("embedded HH browser API", () => {
@@ -14,6 +14,17 @@ describe("embedded HH browser API", () => {
     expect(response.headers.get("cache-control")).toContain("no-store");
     expect(response.headers.get("x-hh-page-id")).toBe("current-page");
     expect(await response.text()).toBe("jpeg");
+  });
+  it("streams private frames only for a valid page and disables proxy buffering", async () => {
+    const stream = new ReadableStream<Uint8Array>({ start(controller) { controller.close(); } });
+    vi.mocked(hhRunner.streamBrowserFrames).mockResolvedValue(stream);
+    const response = await GET(new Request(url + "?stream=1&pageId=current-page"));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    expect(response.headers.get("x-accel-buffering")).toBe("no");
+    expect(hhRunner.streamBrowserFrames).toHaveBeenCalledWith("current-page", expect.any(AbortSignal));
+    expect((await GET(new Request(url + "?stream=1"))).status).toBe(409);
+    expect((await GET(new Request(url + "?stream=1&pageId=x", { headers: { "sec-fetch-site": "cross-site" } }))).status).toBe(403);
   });
   it("does not launch a browser to obtain an idle frame", async () => {
     vi.mocked(hhRunner.getBrowserFrame).mockResolvedValue(null);

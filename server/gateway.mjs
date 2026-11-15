@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
+import { loginPage } from "./login-page.mjs";
 
 // Each account gets its own application process, SQLite database, HH browser
 // and session file. The gateway is the only publicly reachable entry point.
@@ -22,14 +23,10 @@ const workers = new Map();
 const attempts = new Map();
 const tokenHash = (value) => createHash("sha256").update(value).digest("hex");
 const hashPassword = (value, salt) => scryptSync(value, salt, 64);
-const esc = (value) => value.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const session = (req) => {
   const token = /(?:^|;\s*)hh_session=([A-Za-z0-9_-]{43})(?:;|$)/.exec(req.headers.cookie || "")?.[1];
   return token ? db.prepare("SELECT account_id FROM sessions WHERE token_hash=? AND expires>?").get(tokenHash(token), Date.now())?.account_id : undefined;
 };
-function loginPage(error = "") {
-  return `<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Вход в HH Bot</title><style>body{font:16px system-ui;background:#f5f7fc;display:grid;place-items:center;min-height:100vh;margin:0}main{background:white;padding:32px;border-radius:16px;box-shadow:0 8px 40px #10204018;width:min(360px,calc(100% - 64px))}label{display:block;margin:16px 0 6px}input{box-sizing:border-box;width:100%;padding:12px;border:1px solid #ccd4e2;border-radius:8px}button{padding:12px;border:0;border-radius:8px;background:#3659ed;color:white;cursor:pointer;margin:18px 8px 0 0}.error{color:#b12338}</style><main><h1>HH Bot</h1><p>Войдите или создайте аккаунт. Данные сохранятся на всех ваших устройствах.</p>${error ? `<p class="error">${esc(error)}</p>` : ""}<form method="post" action="/account/session"><label for="email">Электронная почта</label><input id="email" name="email" type="email" required maxlength="254" autocomplete="username"><label for="password">Пароль</label><input id="password" name="password" type="password" required minlength="12" maxlength="256" autocomplete="current-password"><button name="action" value="login">Войти</button><button name="action" value="register">Регистрация</button></form></main></html>`;
-}
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let text = "";
@@ -88,13 +85,18 @@ const server = http.createServer(async (req, res) => {
   const accountId = session(req);
   if (!["GET", "HEAD", "OPTIONS"].includes(req.method) && (req.headers.origin !== origin || req.headers["sec-fetch-site"] === "cross-site")) { res.writeHead(403).end(); return; }
   if (url.pathname === "/account/session" && req.method === "POST") {
+    const json = req.headers.accept?.includes("application/json");
+    let email = "";
+    const errorResponse = (status, message) => {
+      res.writeHead(status, { "Content-Type": json ? "application/json; charset=utf-8" : "text/html; charset=utf-8", "Cache-Control": "no-store" }).end(json ? JSON.stringify({ error: message }) : loginPage(message, email));
+    };
     try {
       const key = req.socket.remoteAddress + ":" + (req.headers["x-real-ip"] || "");
       const recent = (attempts.get(key) || []).filter((time) => time > Date.now() - 15 * 60_000);
-      if (recent.length >= 12) { res.writeHead(429, { "Content-Type": "text/html; charset=utf-8" }).end(loginPage("Слишком много попыток. Попробуйте позже.")); return; }
+      if (recent.length >= 12) { errorResponse(429, "Слишком много попыток. Попробуйте позже."); return; }
       recent.push(Date.now()); attempts.set(key, recent);
       const form = new URLSearchParams(await readBody(req));
-      const email = (form.get("email") || "").trim().toLowerCase();
+      email = (form.get("email") || "").trim().toLowerCase().slice(0, 255);
       const password = form.get("password") || "";
       if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length < 12 || password.length > 256) throw new Error("Проверьте почту и пароль (не менее 12 символов).");
       let user = db.prepare("SELECT * FROM accounts WHERE email=?").get(email);
@@ -110,8 +112,8 @@ const server = http.createServer(async (req, res) => {
       } else throw new Error("Неизвестное действие.");
       const token = randomBytes(32).toString("base64url");
       db.prepare("INSERT INTO sessions VALUES (?,?,?)").run(tokenHash(token), user.id, Date.now() + 30 * 86400_000);
-      res.writeHead(303, { Location: "/", "Set-Cookie": `hh_session=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000`, "Cache-Control": "no-store" }).end();
-    } catch (error) { res.writeHead(400, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }).end(loginPage(error.message)); }
+      res.writeHead(json ? 200 : 303, { ...(json ? { "Content-Type": "application/json; charset=utf-8" } : { Location: "/" }), "Set-Cookie": `hh_session=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000`, "Cache-Control": "no-store" }).end(json ? JSON.stringify({ ok: true }) : undefined);
+    } catch (error) { errorResponse(400, error.message); }
     return;
   }
   if (url.pathname === "/account/logout" && req.method === "POST") {
@@ -123,6 +125,7 @@ const server = http.createServer(async (req, res) => {
   try {
     const instance = await worker(accountId);
     const upstream = http.request({ hostname: "127.0.0.1", port: instance.port, path: req.url, method: req.method, headers: { ...req.headers, host: new URL(origin).host } }, (response) => { res.writeHead(response.statusCode || 502, response.headers); response.pipe(res); });
+    res.on("close", () => upstream.destroy());
     upstream.on("error", () => { if (!res.headersSent) res.writeHead(502); res.end(); });
     req.pipe(upstream);
   } catch { res.writeHead(503, { "Content-Type": "text/plain; charset=utf-8" }).end("Не удалось запустить рабочее пространство. Повторите попытку позже."); }

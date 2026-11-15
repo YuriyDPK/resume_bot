@@ -46,7 +46,7 @@ export function SettingsForm({ initialValue, profileId }: { initialValue: Settin
     try {
       if (file.size > 2_000_000) throw new Error("Файл настроек слишком большой (максимум 2 МБ).");
       const imported = importSettings(await file.text());
-      setValue(imported);
+      setValue({ ...imported, questionAnswers: imported.questionAnswers ?? latestValue.current.questionAnswers ?? "" });
       setDirty(true);
       setMessage("Настройки загружены в форму. Проверьте их и нажмите «Сохранить».");
     } catch (error) {
@@ -299,6 +299,12 @@ export function SettingsForm({ initialValue, profileId }: { initialValue: Settin
       <label className="field-group full-span">
         <span>Профиль резюме для подбора</span>
         <textarea aria-label="Профиль резюме для подбора" value={value.resumeText} onChange={(event) => update("resumeText", event.target.value)} rows={7} placeholder={"Желаемая должность: ваша профессия\nОпыт, навыки и пожелания к работе"} />
+      </label>
+
+      <label className="field-group full-span">
+        <span>Автоматические ответы на вопросы работодателя</span>
+        <textarea value={value.questionAnswers ?? ""} onChange={(event) => update("questionAnswers", event.target.value)} rows={5} placeholder={"Сколько лет опыта? | 5\nГотовы к командировкам? | Да"} />
+        <small className="muted-text">Одна строка: точный текст вопроса | ваш ответ. Бот заполнит только однозначные совпадения; остальные вопросы оставит вам. Не включайте пропуск дополнительных требований при запуске.</small>
       </label>
 
       <label className="field-group full-span">

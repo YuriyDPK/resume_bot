@@ -73,7 +73,7 @@ export function AutoApplyPanel({ initialState, profileId, canApply }: { initialS
             disabled={state.running || isPending} onChange={(event) => setSkipAdditionalRequirements(event.target.checked)} />
           <span>Пропускать вакансии с дополнительными требованиями</span>
         </label>
-        <small className="muted-text">Включено — вопросы работодателя и дополнительные условия пропускаются. Выключено — очередь ждёт ручного действия. CAPTCHA всегда ставит очередь на паузу.</small>
+        <small className="muted-text">Включено — вопросы работодателя и дополнительные условия пропускаются. Выключено — бот применяет сохранённые ответы или ждёт ручного действия. CAPTCHA всегда ставит очередь на паузу.</small>
       </div>
 
       <div className="runner-card apply-progress">

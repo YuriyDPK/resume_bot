@@ -24,7 +24,7 @@ const vacancy: Vacancy = {
 };
 
 const settings: Awaited<ReturnType<typeof ensureSettings>> = {
-  hhAccountId: null, resumeVerifiedAt: null, name: "Основное резюме", id: 1, city: "Москва", minSalary: null, coverLetterTemplate: "Здравствуйте", resumeText: "React", resumeUrl: "https://hh.ru/resume/test",
+  hhAccountId: null, resumeVerifiedAt: null, name: "Основное резюме", id: 1, city: "Москва", minSalary: null, coverLetterTemplate: "Здравствуйте", resumeText: "React", questionAnswers: "", resumeUrl: "https://hh.ru/resume/test",
   excludedWords: "junior", excludedDescriptionWords: "", browserHeadless: true, dailyLimit: 5, searchLimit: 50, searchAllRussia: false, remoteOnly: false,
   activeSearchBatchId: "latest", searchDelayMinSeconds: 0, searchDelayMaxSeconds: 0, applyDelayMinSeconds: 0, applyDelayMaxSeconds: 0,
   createdAt: new Date(), updatedAt: new Date(), keywords: []

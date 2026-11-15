@@ -81,6 +81,7 @@ export async function PUT(request: Request) {
     minSalary: optionalNumber(body.minSalary),
     coverLetterTemplate: String(body.coverLetterTemplate ?? "").trim(),
     resumeText: String(body.resumeText ?? "").trim(),
+    questionAnswers: String(body.questionAnswers ?? previous.questionAnswers).trim().slice(0, 20000),
     resumeUrl,
     ...(owner ? { hhAccountId: owner.accountId, resumeVerifiedAt: new Date() } : {}),
     excludedWords: parseExcludedWords(Array.isArray(body.excludedWords) ? body.excludedWords.map(String) : String(body.excludedWords ?? "")).join("\n"),

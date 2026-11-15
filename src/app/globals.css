@@ -1150,3 +1150,11 @@ td { font-size: 12px; padding: 16px 12px; }
 @media(max-width:1100px) { .inbox-filters { grid-template-columns: 1fr 1fr; }.inbox-metrics { grid-template-columns: 1fr 1fr; }.inbox-split { grid-template-columns: minmax(240px,.9fr) minmax(0,1.3fr); } }
 @media(max-width:650px) { .inbox-toolbar { align-items: stretch; flex-direction: column; gap: 10px; }.inbox-metrics { gap: 9px; }.inbox-stat { padding: 12px; gap: 6px; }.inbox-stat span { font-size: 10px; }.inbox-stat strong { font-size: 18px; }.inbox-filters { grid-template-columns: minmax(0,1fr); padding: 14px; }.inbox-split { grid-template-columns: minmax(0,1fr); }.conversation-list { border-right: 0; border-bottom: 1px solid var(--line); max-height: 330px; }.conversation-detail > header { padding: 15px; flex-wrap: wrap; }.chat-messages { padding: 15px; }.conversation-footer { flex-wrap: wrap; } }
 @media (max-width: 650px) { .sidebar .nav-item { flex-direction: column; gap: 5px; padding: 8px 3px; font-size: 9px; } }
+
+.sidebar-logout { margin-top: 18px; }
+.sidebar-logout .nav-item { width: 100%; border: 0; background: transparent; color: #cbd5e1; font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.sidebar-logout .nav-item:hover { background: #303b5a; color: #fff; }
+.exclusion-vacancy button { padding: 2px 1px; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.exclusion-vacancy button:hover, .exclusion-vacancy button:focus-visible { background: #e3e8ff; color: #4654da; }
+.exclusion-vacancy .exclusion-full-title { display: block; margin-top: 5px; color: #5261bf; font-size: 10px; }
+@media (max-width: 900px) { .sidebar-logout { grid-column: 1 / -1; margin-top: 0; } .sidebar .sidebar-logout .nav-item { width: auto; justify-content: flex-start; flex-direction: row; padding: 8px; } }

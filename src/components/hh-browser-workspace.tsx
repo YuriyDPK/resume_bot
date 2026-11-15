@@ -8,6 +8,7 @@ import type { CaptchaInput } from "@/lib/hh/captcha";
 
 type BrowserView = ReturnType<HHRunner["getBrowserView"]>;
 type Input = CaptchaInput | { type: "reload" };
+type QueuedInput = { pageId: string; pauseId: number; input: Input; resolve: ((sent: boolean) => void)[] };
 
 export function HHBrowserWorkspace() {
   const [view, setView] = useState<BrowserView | null>(null);
@@ -25,7 +26,7 @@ export function HHBrowserWorkspace() {
         const response = await fetch("/api/hh/browser", { cache: "no-store", signal: controller.signal });
         if (response.ok) setView(await response.json());
       } catch { /* Keep the current view during a transient connection error. */ }
-      if (!controller.signal.aborted) timer = setTimeout(poll, document.hidden ? 3000 : 1000);
+      if (!controller.signal.aborted) timer = setTimeout(poll, document.hidden ? 3000 : 500);
     }
     void poll();
     return () => { controller.abort(); clearTimeout(timer); };
@@ -108,10 +109,13 @@ function BrowserSurface({ view, zoom, panning }: { view: BrowserView; zoom: numb
   const viewport = useRef<HTMLDivElement>(null);
   const image = useRef<HTMLImageElement>(null);
   const framePageId = useRef<string | null>(null);
-  const queue = useRef<Promise<unknown>>(Promise.resolve());
+  const queue = useRef<QueuedInput[]>([]);
+  const sending = useRef(false);
   const alive = useRef(true);
   const dragging = useRef(false);
   const lastMove = useRef(0);
+  const pendingText = useRef("");
+  const textTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const panStart = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const interactive = view.interactive && !resuming;
 
@@ -120,6 +124,8 @@ function BrowserSurface({ view, zoom, panning }: { view: BrowserView; zoom: numb
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     let currentUrl: string | undefined;
+    let source: EventSource | undefined;
+    let fallback = false;
     async function refresh() {
       if (!document.hidden) {
         try {
@@ -135,15 +141,52 @@ function BrowserSurface({ view, zoom, panning }: { view: BrowserView; zoom: numb
           }
         } catch { /* Navigation may briefly interrupt a frame. */ }
       }
-      if (!controller.signal.aborted) timer = setTimeout(refresh, document.hidden ? 1500 : 400);
+      if (!controller.signal.aborted) timer = setTimeout(refresh, document.hidden ? 1500 : 100);
     }
-    void refresh();
-    return () => { alive.current = false; controller.abort(); clearTimeout(timer); if (currentUrl) URL.revokeObjectURL(currentUrl); };
-  }, []);
+    if (view.pageId && typeof EventSource !== "undefined") {
+      source = new EventSource("/api/hh/browser?stream=1&pageId=" + encodeURIComponent(view.pageId));
+      source.onmessage = (event) => {
+        try {
+          const frame = JSON.parse(event.data) as { pageId: string; image: string };
+          if (!controller.signal.aborted && frame.pageId === view.pageId && frame.image) setFrame({ url: "data:image/jpeg;base64," + frame.image, pageId: frame.pageId });
+        } catch { /* Ignore incomplete frames. */ }
+      };
+      source.onerror = () => {
+        source?.close();
+        if (!fallback && !controller.signal.aborted) { fallback = true; void refresh(); }
+      };
+    } else { fallback = true; void refresh(); }
+    return () => {
+      alive.current = false;
+      source?.close(); controller.abort(); clearTimeout(timer);
+      if (textTimer.current) clearTimeout(textTimer.current);
+      pendingText.current = "";
+      if (currentUrl) URL.revokeObjectURL(currentUrl);
+    };
+  }, [view.pageId]);
 
   useEffect(() => {
     if (interactive) viewport.current?.focus({ preventScroll: true });
   }, [interactive]);
+
+  async function drainQueue() {
+    if (sending.current) return;
+    sending.current = true;
+    while (queue.current.length) {
+      const action = queue.current.shift()!;
+      let sent = false;
+      try {
+        const response = await fetch("/api/hh/browser", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pageId: action.pageId, pauseId: action.pauseId, input: action.input }) });
+        if (!response.ok) {
+          const payload = await response.json();
+          if (alive.current) setError(payload.error ?? "Действие не передано");
+        } else { sent = true; if (alive.current) setError(null); }
+      } catch { if (alive.current) setError("Не удалось связаться с ботом. Повторите действие."); }
+      action.resolve.forEach((resolve) => resolve(sent));
+    }
+    sending.current = false;
+  }
 
   function send(input: Input) {
     const pageId = framePageId.current;
@@ -152,21 +195,32 @@ function BrowserSurface({ view, zoom, panning }: { view: BrowserView; zoom: numb
       setError("Дождитесь загрузки изображения страницы HH и повторите действие.");
       return Promise.resolve(false);
     }
-    const action = queue.current.then(async () => {
-      try {
-        const response = await fetch("/api/hh/browser", { method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ pageId, pauseId: view.state.manualPauseId, input }) });
-        if (!response.ok) {
-          const payload = await response.json();
-          if (alive.current) setError(payload.error ?? "Действие не передано");
-          return false;
-        }
-        if (alive.current) setError(null);
-        return true;
-      } catch { if (alive.current) setError("Не удалось связаться с ботом. Повторите действие."); return false; }
+    return new Promise<boolean>((resolve) => {
+      const last = queue.current.at(-1);
+      if (last && last.pageId === pageId && last.pauseId === view.state.manualPauseId && last.input.type === "text" && input.type === "text" && last.input.text.length + input.text.length <= 500) {
+        last.input.text += input.text;
+        last.resolve.push(resolve);
+      } else if (last && last.pageId === pageId && last.pauseId === view.state.manualPauseId && last.input.type === "pointer" && last.input.action === "move" && input.type === "pointer" && input.action === "move") {
+        last.input = input;
+        last.resolve.push(resolve);
+      } else queue.current.push({ pageId, pauseId: view.state.manualPauseId, input, resolve: [resolve] });
+      void drainQueue();
     });
-    queue.current = action;
-    return action;
+  }
+
+  function flushText() {
+    if (textTimer.current) clearTimeout(textTimer.current);
+    textTimer.current = null;
+    const text = pendingText.current;
+    pendingText.current = "";
+    if (text) void send({ type: "text", text });
+  }
+
+  function typeText(text: string) {
+    if (pendingText.current.length + text.length > 500) flushText();
+    pendingText.current += text;
+    if (textTimer.current) clearTimeout(textTimer.current);
+    textTimer.current = setTimeout(flushText, 25);
   }
 
   function point(event: PointerEvent<HTMLDivElement>) {
@@ -201,6 +255,7 @@ function BrowserSurface({ view, zoom, panning }: { view: BrowserView; zoom: numb
     if (!coordinates) return;
     event.preventDefault();
     if (action === "down") {
+      flushText();
       dragging.current = true;
       event.currentTarget.setPointerCapture(event.pointerId);
       event.currentTarget.focus({ preventScroll: true });
@@ -218,10 +273,11 @@ function BrowserSurface({ view, zoom, panning }: { view: BrowserView; zoom: numb
     else if (event.key === "Tab") input = { type: "key", key: event.shiftKey ? "Shift+Tab" : "Tab" };
     else if (event.key.length === 1) input = { type: "text", text: event.key };
     else if (browserKeys.includes(event.key as typeof browserKeys[number])) input = { type: "key", key: event.key as typeof browserKeys[number] };
-    if (input) { event.preventDefault(); void send(input); }
+    if (input) { event.preventDefault(); if (input.type === "text") typeText(input.text); else { flushText(); void send(input); } }
   }
 
   async function resume() {
+    flushText();
     const action = send({ type: "continue" });
     setResuming(true);
     if (!await action && alive.current) setResuming(false);
@@ -232,8 +288,8 @@ function BrowserSurface({ view, zoom, panning }: { view: BrowserView; zoom: numb
       aria-label="Страница HH внутри бота" aria-disabled={!interactive} onKeyDown={keyDown}
       onPointerDown={(event) => pointer(event, "down")} onPointerMove={(event) => pointer(event, "move")}
       onPointerUp={(event) => pointer(event, "up")} onPointerCancel={(event) => pointer(event, "up")}
-      onPaste={(event) => { if (interactive && !panning) { event.preventDefault(); void send({ type: "text", text: event.clipboardData.getData("text").slice(0, 500) }); } }}
-      onWheel={(event) => { if (interactive && !panning) void send({ type: "scroll", deltaY: Math.max(-600, Math.min(600, event.deltaY)) }); }}>
+      onPaste={(event) => { if (interactive && !panning) { event.preventDefault(); typeText(event.clipboardData.getData("text").slice(0, 500)); } }}
+      onWheel={(event) => { if (interactive && !panning) { flushText(); void send({ type: "scroll", deltaY: Math.max(-600, Math.min(600, event.deltaY)) }); } }}>
       {frame ? <div className="hh-viewport-stage" style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }}>
         {/* A live browser frame must retain its viewport coordinates. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}

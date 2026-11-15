@@ -21,6 +21,14 @@ try {
   }
   const a = await account("a@example.test");
   const b = await account("b@example.test");
+  const wrong = await request("/account/session", { method: "POST", headers: { accept: "application/json" }, body: new URLSearchParams({ email: "a@example.test", password: "wrong-password-123", action: "login" }) });
+  assert.equal(wrong.status, 400);
+  assert.match((await wrong.json()).error, /Неверная/);
+  const invalid = await request("/account/session", { method: "POST", body: new URLSearchParams({ email: "a@example.test", password: "wrong-password-123", action: "login" }) });
+  const invalidHtml = await invalid.text();
+  assert.match(invalidHtml, /value="a@example.test"/);
+  assert.doesNotMatch(invalidHtml, /wrong-password-123/);
+
   const headers = (cookie) => ({ cookie, "content-type": "application/json" });
   const settingsA = await (await request("/api/settings", { headers: headers(a) })).json();
   assert.equal((await request("/api/settings", { method: "PUT", headers: headers(a), body: JSON.stringify({ profileId: settingsA.settings.id, city: "Казань", keywords: "Врач", resumeText: "" }) })).status, 200);

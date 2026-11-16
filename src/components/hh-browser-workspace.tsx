@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useEffectEvent, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { ChevronDown, Hand, Maximize, Minimize, Monitor, RefreshCw, Square, ZoomIn, ZoomOut } from "lucide-react";
 import type { HHRunner } from "@/lib/hh/runner";
 import { browserKeys, type BrowserInput } from "@/lib/hh/browser-view";
@@ -200,6 +200,9 @@ function BrowserSurface({ view, zoom, panning }: { view: BrowserView; zoom: numb
       if (last && last.pageId === pageId && last.pauseId === view.state.manualPauseId && last.input.type === "text" && input.type === "text" && last.input.text.length + input.text.length <= 500) {
         last.input.text += input.text;
         last.resolve.push(resolve);
+      } else if (last && last.pageId === pageId && last.pauseId === view.state.manualPauseId && last.input.type === "scroll" && input.type === "scroll" && Math.sign(last.input.deltaY) === Math.sign(input.deltaY) && Math.abs(last.input.deltaY + input.deltaY) <= 600) {
+        last.input.deltaY += input.deltaY;
+        last.resolve.push(resolve);
       } else if (last && last.pageId === pageId && last.pauseId === view.state.manualPauseId && last.input.type === "pointer" && last.input.action === "move" && input.type === "pointer" && input.action === "move") {
         last.input = input;
         last.resolve.push(resolve);
@@ -276,6 +279,25 @@ function BrowserSurface({ view, zoom, panning }: { view: BrowserView; zoom: numb
     if (input) { event.preventDefault(); if (input.type === "text") typeText(input.text); else { flushText(); void send(input); } }
   }
 
+  const handleWheel = useEffectEvent((event: WheelEvent) => {
+    if (!interactive || panning || event.ctrlKey || event.metaKey) return;
+    // React's delegated wheel handler is passive in browsers. A native
+    // non-passive listener is required to stop the outer page scrolling too.
+    event.preventDefault();
+    event.stopPropagation();
+    const multiplier = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? (viewport.current?.clientHeight ?? 600) : 1;
+    const deltaY = Math.max(-600, Math.min(600, event.deltaY * multiplier));
+    if (deltaY) { flushText(); void send({ type: "scroll", deltaY }); }
+  });
+
+  useEffect(() => {
+    const element = viewport.current;
+    if (!element) return;
+    const listener = (event: WheelEvent) => handleWheel(event);
+    element.addEventListener("wheel", listener, { passive: false });
+    return () => element.removeEventListener("wheel", listener);
+  }, []);
+
   async function resume() {
     flushText();
     const action = send({ type: "continue" });
@@ -288,8 +310,7 @@ function BrowserSurface({ view, zoom, panning }: { view: BrowserView; zoom: numb
       aria-label="Страница HH внутри бота" aria-disabled={!interactive} onKeyDown={keyDown}
       onPointerDown={(event) => pointer(event, "down")} onPointerMove={(event) => pointer(event, "move")}
       onPointerUp={(event) => pointer(event, "up")} onPointerCancel={(event) => pointer(event, "up")}
-      onPaste={(event) => { if (interactive && !panning) { event.preventDefault(); typeText(event.clipboardData.getData("text").slice(0, 500)); } }}
-      onWheel={(event) => { if (interactive && !panning) { flushText(); void send({ type: "scroll", deltaY: Math.max(-600, Math.min(600, event.deltaY)) }); } }}>
+      onPaste={(event) => { if (interactive && !panning) { event.preventDefault(); typeText(event.clipboardData.getData("text").slice(0, 500)); } }}>
       {frame ? <div className="hh-viewport-stage" style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }}>
         {/* A live browser frame must retain its viewport coordinates. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}

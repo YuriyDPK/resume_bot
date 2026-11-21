@@ -65,6 +65,5 @@ export function calculateMatchScore(vacancy: FilterableVacancy, settings: MatchS
 export function isRelevantVacancy(vacancy: FilterableVacancy, settings: MatchSettings) {
   if (vacancyHasExcludedWords(vacancy, settings.excludedWords ?? [])) return false;
   const queries = buildSearchQueries(settings.keywords, settings.resumeText);
-  const text = [vacancy.title, vacancy.description].filter(Boolean).join(" ");
-  return queries.some((query) => queryMatchesText(query, text));
+  return queries.some((query) => queryMatchesText(query, vacancy.title));
 }

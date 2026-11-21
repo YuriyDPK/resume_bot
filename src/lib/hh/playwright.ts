@@ -151,6 +151,7 @@ export class HHPlaywrightService extends HHBrowserSession {
         this.assertNotStopped(params.stopRequested);
         const url = new URL("https://hh.ru/search/vacancy");
         url.searchParams.set("text", keyword);
+        url.searchParams.set("search_field", "name");
         url.searchParams.set("items_on_page", String(itemsPerPage));
         url.searchParams.set("page", String(pageNumber));
         url.searchParams.set("order_by", "publication_time");

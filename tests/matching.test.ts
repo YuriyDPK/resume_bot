@@ -26,8 +26,11 @@ describe("profession-independent matching", () => {
       expect(isRelevantVacancy({ title: "Исполнительный директор" }, { keywords: [keyword] })).toBe(false);
     }
   });
-  it("checks full descriptions for skill queries that do not appear in the title", () => {
-    expect(isRelevantVacancy({ title: "Специалист", description: "Ведение учёта, знание Excel и 1С" }, { keywords: ["Excel 1С"] })).toBe(true);
+  it("requires all query terms in the title, not just the description", () => {
+    expect(isRelevantVacancy({ title: "Специалист", description: "Ведение учёта, знание Excel и 1С" }, { keywords: ["Excel 1С"] })).toBe(false);
+    expect(isRelevantVacancy({ title: "Специалист Excel", description: "Знание 1С" }, { keywords: ["Excel 1С"] })).toBe(false);
+    expect(isRelevantVacancy({ title: "Специалист Excel и 1С" }, { keywords: ["Excel 1С"] })).toBe(true);
+    expect(isRelevantVacancy({ title: "Помощник бухгалтера" }, { keywords: ["Повар", "Бухгалтер"] })).toBe(true);
   });
   it("keeps manual keywords authoritative regardless of the resume", () => {
     expect(buildSearchQueries(["Frontend developer", "TypeScript", "Next.js"], "Желаемая должность: Врач")).toEqual(["Frontend developer", "TypeScript", "Next.js"]);

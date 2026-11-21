@@ -394,7 +394,7 @@ export class HHRunner {
       }
 
       if (!isRelevantVacancy(vacancy, settings)) {
-        await writeLog("info", `Вакансия «${vacancy.title}» пропущена: ни один поисковый запрос не совпал с названием или описанием`, { title: vacancy.title, url: vacancy.url, keywords: buildSearchQueries(settings.keywords, settings.resumeText), searchBatchId: settings.searchBatchId });
+        await writeLog("info", `Вакансия «${vacancy.title}» пропущена: ни один поисковый запрос не совпал с названием`, { title: vacancy.title, url: vacancy.url, keywords: buildSearchQueries(settings.keywords, settings.resumeText), searchBatchId: settings.searchBatchId });
         continue;
       }
 

@@ -168,7 +168,7 @@ export function SettingsForm({ initialValue, profileId }: { initialValue: Settin
       <label className="field-group full-span">
         <span>Ключевые слова для поиска</span>
         <textarea value={value.keywords} onChange={(event) => update("keywords", event.target.value)} rows={4} placeholder={"Например: бухгалтер\nводитель категории B\nврач-терапевт"} />
-        <small>Любая профессия или набор навыков. Каждый запрос — отдельный вариант поиска. Эти настройки имеют приоритет над текстом резюме.</small>
+        <small>Каждый запрос — отдельный вариант поиска: все его значимые слова должны быть в названии вакансии. Настройки имеют приоритет над текстом резюме.</small>
       </label>
 
       <label className="field-group full-span">
